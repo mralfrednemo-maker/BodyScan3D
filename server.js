@@ -185,11 +185,17 @@ app.get('/api/health', (req, res) => {
 // ---------------------------------------------------------------------------
 // Routes — Auth
 // ---------------------------------------------------------------------------
+const VALID_ROLES = ['professional', 'client'];
+const VALID_SPECIALIZATIONS = ['Plastic Surgeon', 'Tattoo Artist', 'Other'];
+
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password, displayName, role = 'professional', specialization } = req.body;
     if (!username || !password || !displayName) {
       return res.status(400).json({ message: 'username, password and displayName are required' });
+    }
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({ message: `role must be one of: ${VALID_ROLES.join(', ')}` });
     }
     if (q.get('SELECT id FROM users WHERE username = ?', username)) {
       return res.status(400).json({ message: 'Username already taken' });
@@ -291,7 +297,7 @@ app.get('/api/scans', requireAuth, (req, res) => {
 
 // IMPORTANT: /recent must be registered before /:id or Express will match "recent" as an id
 app.get('/api/scans/recent', requireAuth, (req, res) => {
-  const limit = parseInt(req.query.limit) || 5;
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 5), 100);
   const sql = `
     SELECT s.*, c.firstName, c.lastName
     FROM scans s
@@ -326,7 +332,11 @@ app.patch('/api/scans/:id', requireAuth, (req, res) => {
   if (!q.get('SELECT id FROM scans WHERE id = ? AND professional_id = ?', req.params.id, req.user.id)) {
     return res.status(404).json({ message: 'Scan not found' });
   }
+  const VALID_SCAN_STATUSES = ['Processing', 'Ready', 'Archived'];
   const { title, bodyPart, status, notes } = req.body;
+  if (status && !VALID_SCAN_STATUSES.includes(status)) {
+    return res.status(400).json({ message: `status must be one of: ${VALID_SCAN_STATUSES.join(', ')}` });
+  }
   q.run(
     'UPDATE scans SET title=COALESCE(?,title), bodyPart=COALESCE(?,bodyPart), status=COALESCE(?,status), notes=COALESCE(?,notes) WHERE id=?',
     title || null, bodyPart || null, status || null, notes || null, req.params.id
