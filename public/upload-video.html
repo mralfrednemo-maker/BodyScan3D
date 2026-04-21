@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>BodyScan 3D — Upload Video</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #0f172a; color: #fff; min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 16px) 16px; }
+
+    .wrap { max-width: 480px; margin: 0 auto; padding: 24px 0 32px; }
+
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: #94a3b8; font-size: 14px; margin-bottom: 24px; line-height: 1.45; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    label { font-size: 13px; color: #cbd5e1; font-weight: 600; }
+    input[type=text], select {
+      background: #1e293b; color: #fff; border: 1px solid #334155;
+      border-radius: 10px; padding: 12px 14px; font-size: 16px; /* 16px avoids iOS zoom */
+      width: 100%; appearance: none; -webkit-appearance: none;
+    }
+    select { background-image: linear-gradient(45deg, transparent 50%, #94a3b8 50%), linear-gradient(135deg, #94a3b8 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 36px; }
+    input[type=file] {
+      background: #1e293b; color: #cbd5e1; border: 1px dashed #475569;
+      border-radius: 10px; padding: 14px; font-size: 14px; width: 100%;
+    }
+
+    .file-info { font-size: 12px; color: #64748b; margin-top: 6px; min-height: 14px; }
+
+    .btn {
+      width: 100%; padding: 14px; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      background: #8b5cf6; color: #fff; margin-top: 8px;
+      transition: background 0.15s;
+    }
+    .btn:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+    .btn-outline { background: transparent; border: 1.5px solid #334155; color: #cbd5e1; margin-top: 12px; }
+
+    .progress-wrap { margin-top: 18px; display: none; }
+    .progress-wrap.active { display: block; }
+    .progress-bar {
+      height: 8px; background: #1e293b; border-radius: 999px; overflow: hidden;
+    }
+    .progress-fill { height: 100%; background: #14b8a6; width: 0%; transition: width 0.2s; }
+    .progress-text { font-size: 13px; color: #94a3b8; margin-top: 8px; text-align: center; }
+
+    .alert {
+      padding: 12px 14px; border-radius: 10px; font-size: 14px;
+      margin-top: 16px; line-height: 1.4;
+    }
+    .alert-error { background: #450a0a; color: #fecaca; border: 1px solid #7f1d1d; }
+    .alert-info  { background: #082f49; color: #bae6fd; border: 1px solid #075985; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Upload walkaround video</h1>
+    <p class="sub">
+      Film a 20-30 second walkaround of the subject with your phone's
+      native camera, then upload it here. The backend will pick the sharpest
+      frames and run the reconstruction.
+    </p>
+
+    <div id="auth-error" class="alert alert-error hidden"></div>
+
+    <form id="login-form" class="hidden">
+      <div class="alert alert-info" style="margin-top:0;margin-bottom:16px">
+        Sign in to upload a video.
+      </div>
+      <div class="field">
+        <label for="login-username">Username</label>
+        <input id="login-username" type="text" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required />
+      </div>
+      <button id="login-submit" class="btn" type="submit">Sign in</button>
+      <div id="login-error" class="alert alert-error hidden"></div>
+    </form>
+
+    <form id="form" class="hidden">
+      <div class="field">
+        <label for="client">Client</label>
+        <select id="client" required></select>
+      </div>
+
+      <div class="field">
+        <label for="title">Scan title</label>
+        <input id="title" type="text" placeholder="e.g. Left forearm — April 16" required maxlength="120" />
+      </div>
+
+      <div class="field">
+        <label for="bodyPart">Body part</label>
+        <input id="bodyPart" type="text" placeholder="e.g. Forearm" required maxlength="80" />
+      </div>
+
+      <div class="field">
+        <label for="video">Video file (mp4 / mov)</label>
+        <input id="video" type="file" accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v" required />
+        <div id="file-info" class="file-info"></div>
+      </div>
+
+      <button id="submit" class="btn" type="submit">Upload &amp; start processing</button>
+      <a id="dash-link" href="/" class="btn btn-outline" style="display:block;text-align:center;text-decoration:none;">Back to dashboard</a>
+
+      <div id="progress" class="progress-wrap">
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <div id="progress-text" class="progress-text">Uploading…</div>
+      </div>
+
+      <div id="error" class="alert alert-error hidden"></div>
+    </form>
+  </div>
+
+<script>
+(function () {
+  // ------------------------------------------------------------------
+  // Auth.
+  //
+  // The React SPA does not persist auth to localStorage, so we cannot
+  // piggy-back on its session. Instead this page maintains its own visitor id
+  // under a dedicated localStorage key (BS3D_UPLOAD_VID) and uses /api/login
+  // directly when the stored id is missing or expired.
+  // ------------------------------------------------------------------
+  var STORAGE_KEY = 'BS3D_UPLOAD_VID';
+  // RFC 4122 v4 UUID — sufficient for visitor-id purposes (server only stores it).
+  function newUuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    var b = new Uint8Array(16);
+    (window.crypto || window.msCrypto).getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    var hex = Array.prototype.map.call(b, function (n) { return ('0' + n.toString(16)).slice(-2); }).join('');
+    return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+  }
+
+  function validateVisitorId(candidate) {
+    return fetch('/api/user', { headers: { 'X-Visitor-Id': candidate } })
+      .then(function (r) { return r.ok ? candidate : null; })
+      .catch(function () { return null; });
+  }
+
+  var visitorId = null;
+  var authError = document.getElementById('auth-error');
+  var form      = document.getElementById('form');
+  var loginForm = document.getElementById('login-form');
+  var loginErr  = document.getElementById('login-error');
+  var clientSel = document.getElementById('client');
+
+  function showLogin() { loginForm.classList.remove('hidden'); }
+  function hideLogin() { loginForm.classList.add('hidden'); }
+
+  // Bootstrap: try the stored visitor id; if it works, skip login.
+  (function bootstrap() {
+    var stored = null;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch (_) {}
+    if (!stored) { showLogin(); return; }
+    validateVisitorId(stored).then(function (vid) {
+      if (vid) { visitorId = vid; loadClients(); }
+      else     { showLogin(); }
+    });
+  })();
+
+  loginForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    loginErr.classList.add('hidden');
+    var u = document.getElementById('login-username').value.trim();
+    var p = document.getElementById('login-password').value;
+    if (!u || !p) return;
+
+    // Generate (or reuse) a visitor id and send it with the login so the
+    // server uses it instead of generating its own. This means our id stays
+    // in our control and survives reloads.
+    var candidate = null;
+    try { candidate = localStorage.getItem(STORAGE_KEY); } catch (_) {}
+    if (!candidate) candidate = newUuid();
+
+    fetch('/api/login', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Visitor-Id': candidate },
+      body:    JSON.stringify({ username: u, password: p })
+    }).then(function (r) {
+      return r.json().then(function (body) { return { ok: r.ok, status: r.status, body: body }; });
+    }).then(function (res) {
+      if (!res.ok) throw new Error(res.body && res.body.message ? res.body.message : 'Sign in failed');
+      try { localStorage.setItem(STORAGE_KEY, candidate); } catch (_) {}
+      visitorId = candidate;
+      hideLogin();
+      return loadClients();
+    }).catch(function (err) {
+      loginErr.textContent = err.message || 'Sign in failed.';
+      loginErr.classList.remove('hidden');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Load clients into the dropdown
+  // ------------------------------------------------------------------
+  function loadClients() {
+    return fetch('/api/clients', { headers: { 'X-Visitor-Id': visitorId } })
+    .then(function (r) {
+      if (r.status === 401) throw new Error('Session expired — please log in to the dashboard again.');
+      if (!r.ok) throw new Error('Failed to load clients (' + r.status + ').');
+      return r.json();
+    })
+    .then(function (clients) {
+      if (!Array.isArray(clients) || clients.length === 0) {
+        authError.textContent = 'You have no clients yet. Create one in the dashboard first.';
+        authError.classList.remove('hidden');
+        return;
+      }
+      clients.forEach(function (c) {
+        var opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.firstName + ' ' + c.lastName;
+        clientSel.appendChild(opt);
+      });
+      form.classList.remove('hidden');
+    })
+    .catch(function (err) {
+      authError.textContent = err.message;
+      authError.classList.remove('hidden');
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // File picker — show selected file info
+  // ------------------------------------------------------------------
+  var videoInput = document.getElementById('video');
+  var fileInfo   = document.getElementById('file-info');
+  videoInput.addEventListener('change', function () {
+    var f = videoInput.files && videoInput.files[0];
+    if (!f) { fileInfo.textContent = ''; return; }
+    var mb = (f.size / 1024 / 1024).toFixed(1);
+    fileInfo.textContent = f.name + '  •  ' + mb + ' MB';
+  });
+
+  // ------------------------------------------------------------------
+  // Submit — XHR upload (so we get progress events)
+  // ------------------------------------------------------------------
+  var submitBtn  = document.getElementById('submit');
+  var progress   = document.getElementById('progress');
+  var fill       = document.getElementById('progress-fill');
+  var pText      = document.getElementById('progress-text');
+  var errBox     = document.getElementById('error');
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    errBox.classList.add('hidden');
+
+    var file = videoInput.files && videoInput.files[0];
+    if (!file) return;
+
+    var fd = new FormData();
+    fd.append('video',    file);
+    fd.append('clientId', clientSel.value);
+    fd.append('title',    document.getElementById('title').value.trim());
+    fd.append('bodyPart', document.getElementById('bodyPart').value.trim());
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/video-upload');
+    xhr.setRequestHeader('X-Visitor-Id', visitorId);
+
+    xhr.upload.onprogress = function (e) {
+      if (!e.lengthComputable) return;
+      var pct = (e.loaded / e.total) * 100;
+      fill.style.width = pct.toFixed(1) + '%';
+      pText.textContent = 'Uploading… ' + pct.toFixed(0) + '%';
+    };
+
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          fill.style.width = '100%';
+          waitForKeyframes(data.id);
+        } catch (_) {
+          showError('Upload succeeded but the server response was malformed.');
+        }
+      } else {
+        var msg;
+        try { msg = JSON.parse(xhr.responseText).message; } catch (_) { msg = xhr.statusText || 'Upload failed'; }
+        showError(msg + ' (HTTP ' + xhr.status + ')');
+      }
+    };
+
+    // After upload, the server is still extracting keyframes. Poll until the
+    // scan reaches AWAITING_TARGET (anchors are picked) before sending the user
+    // to prompt.html — otherwise prompt.html would dead-end with "No anchor
+    // frames" because frame_qa.py hasn't run yet.
+    function waitForKeyframes(scanId) {
+      var POLL_MS  = 2500;
+      var TIMEOUT  = 5 * 60 * 1000; // 5 min ceiling
+      var started  = Date.now();
+
+      function tick() {
+        fetch('/api/scans/' + encodeURIComponent(scanId) + '/status', {
+          headers: { 'X-Visitor-Id': visitorId }
+        }).then(function (r) {
+          if (!r.ok) throw new Error('status check failed (HTTP ' + r.status + ')');
+          return r.json();
+        }).then(function (s) {
+          var state = s.pipelineStatus || s.status;
+          pText.textContent = 'Processing… ' + state;
+          if (state === 'AWAITING_TARGET') {
+            // prompt.html requires both `scan` and `vid` query params.
+            window.location.href = '/prompt.html?scan=' + encodeURIComponent(scanId)
+                                 + '&vid='  + encodeURIComponent(visitorId);
+            return;
+          }
+          if (state === 'FAILED') {
+            showError(s.errorMessage || 'Processing failed during keyframe extraction.');
+            return;
+          }
+          if (Date.now() - started > TIMEOUT) {
+            showError('Timed out waiting for keyframe extraction. Open the dashboard to check the scan.');
+            return;
+          }
+          setTimeout(tick, POLL_MS);
+        }).catch(function (err) {
+          // Transient errors: keep polling until timeout.
+          if (Date.now() - started > TIMEOUT) {
+            showError(err.message || 'Lost connection while waiting for processing.');
+          } else {
+            setTimeout(tick, POLL_MS);
+          }
+        });
+      }
+
+      pText.textContent = 'Upload complete — extracting keyframes…';
+      tick();
+    }
+
+    xhr.onerror = function () { showError('Network error — check your connection and try again.'); };
+
+    submitBtn.disabled = true;
+    progress.classList.add('active');
+    fill.style.width = '0%';
+    pText.textContent = 'Uploading… 0%';
+    xhr.send(fd);
+
+    function showError(m) {
+      errBox.textContent = m;
+      errBox.classList.remove('hidden');
+      submitBtn.disabled = false;
+      progress.classList.remove('active');
+    }
+  });
+})();
+</script>
+</body>
+</html>

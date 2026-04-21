@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>BodyScan 3D — Select Target Area</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #0f172a; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100%; overflow: hidden;
+      touch-action: manipulation;
+    }
+    .screen { display: none; flex-direction: column; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* loading */
+    #screen-loading { align-items:center; justify-content:center; gap:16px; }
+    .spinner {
+      width:40px; height:40px; border-radius:50%;
+      border:4px solid #1e293b; border-top-color:#8b5cf6;
+      animation:spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* error */
+    #screen-error { align-items:center; justify-content:center; padding:32px; gap:12px; text-align:center; }
+    #error-msg { font-size:14px; color:#94a3b8; line-height:1.5; }
+    .btn { padding:12px 24px; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }
+    .btn-purple { background:#8b5cf6; color:#fff; }
+    .btn-teal   { background:#14b8a6; color:#fff; }
+    .btn-outline { background:transparent; border:1.5px solid #334155; color:#94a3b8; }
+
+    /* header */
+    .header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 20px env(safe-area-inset-top,0) 20px;
+      background:#111827; border-bottom:1px solid #1e293b;
+      flex-shrink:0;
+    }
+    .header-title { font-size:15px; font-weight:700; }
+    .header-sub { font-size:12px; color:#64748b; margin-top:2px; }
+
+    /* canvas container */
+    #canvas-wrap {
+      flex:1; position:relative; overflow:hidden;
+      display:flex; align-items:center; justify-content:center;
+      background:#0a1120;
+    }
+    #ref-img {
+      position:absolute; max-width:100%; max-height:100%;
+      object-fit:contain; user-select:none; pointer-events:none;
+      display:block;
+    }
+    #draw-canvas {
+      position:absolute; cursor:crosshair; touch-action:none;
+    }
+
+    /* thumbnails (when multiple anchor frames) */
+    #thumb-strip {
+      display:flex; gap:8px; padding:10px 16px;
+      overflow-x:auto; background:#111827;
+      border-top:1px solid #1e293b; flex-shrink:0;
+    }
+    #thumb-strip:empty { display:none; }
+    .thumb {
+      width:60px; height:60px; object-fit:cover;
+      border-radius:6px; border:2px solid transparent;
+      cursor:pointer; flex-shrink:0;
+    }
+    .thumb.active { border-color:#8b5cf6; }
+
+    /* footer */
+    .footer {
+      padding:16px 20px env(safe-area-inset-bottom,16px) 20px;
+      background:#111827; border-top:1px solid #1e293b;
+      display:flex; gap:10px; flex-shrink:0;
+    }
+
+    /* help overlay */
+    #help-text {
+      position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,0.65); padding:6px 14px; border-radius:20px;
+      font-size:12px; color:rgba(255,255,255,0.7); white-space:nowrap;
+      pointer-events:none;
+    }
+
+    /* tool buttons */
+    .tool-btn.active { background:rgba(139,92,246,0.25); border-color:#8b5cf6; color:#fff; }
+    .tool-btn[data-tool="pos"].active { background:rgba(34,197,94,0.2); border-color:#22c55e; }
+    .tool-btn[data-tool="neg"].active { background:rgba(239,68,68,0.2); border-color:#ef4444; }
+
+    /* body-part buttons */
+    .bp-btn {
+      padding:5px 12px; background:rgba(255,255,255,0.06); border:1px solid #334155;
+      border-radius:16px; color:#94a3b8; font-size:11px; cursor:pointer;
+      white-space:nowrap; flex-shrink:0;
+    }
+    .bp-btn.active { background:rgba(139,92,246,0.25); border-color:#8b5cf6; color:#fff; }
+
+    /* click markers on canvas */
+    .click-marker {
+      position:absolute; width:18px; height:18px; border-radius:50%;
+      transform:translate(-50%,-50%); pointer-events:none;
+      display:flex; align-items:center; justify-content:center;
+      font-size:12px; font-weight:700; line-height:1;
+    }
+    .click-marker.pos { background:rgba(34,197,94,0.8); color:#fff; }
+    .click-marker.neg { background:rgba(239,68,68,0.8); color:#fff; }
+
+    /* done */
+    #screen-done { align-items:center; justify-content:center; padding:32px; gap:16px; text-align:center; }
+    .done-icon { font-size:64px; }
+    .done-title { font-size:22px; font-weight:700; }
+    .done-sub { font-size:14px; color:#94a3b8; line-height:1.6; }
+  </style>
+</head>
+<body>
+
+<div id="screen-loading" class="screen active">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:#94a3b8">Loading frames...</div>
+</div>
+
+<div id="screen-error" class="screen">
+  <div style="font-size:40px">⚠️</div>
+  <div style="font-size:18px;font-weight:700" id="error-title">Error</div>
+  <div id="error-msg"></div>
+  <button class="btn btn-outline" onclick="location.reload()">Retry</button>
+</div>
+
+<div id="screen-draw" class="screen">
+  <div class="header">
+    <div>
+      <div class="header-title" id="scan-title">Loading...</div>
+      <div class="header-sub" id="header-sub">Select target area</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="btn btn-outline tool-btn active" id="btn-tool-box" style="padding:6px 10px;font-size:11px" data-tool="box">Box</button>
+      <button class="btn btn-outline tool-btn" id="btn-tool-pos" style="padding:6px 10px;font-size:11px;color:#22c55e" data-tool="pos">+ Click</button>
+      <button class="btn btn-outline tool-btn" id="btn-tool-neg" style="padding:6px 10px;font-size:11px;color:#ef4444" data-tool="neg">- Click</button>
+      <button class="btn btn-outline" id="btn-clear" style="padding:6px 10px;font-size:11px">Clear</button>
+    </div>
+  </div>
+
+  <!-- Body-part selector strip -->
+  <div id="bodypart-strip" style="display:flex;gap:6px;padding:8px 16px;background:#111827;border-bottom:1px solid #1e293b;overflow-x:auto;flex-shrink:0">
+    <button class="bp-btn active" data-bp="torso">Torso</button>
+    <button class="bp-btn" data-bp="arm">Arm</button>
+    <button class="bp-btn" data-bp="leg">Leg</button>
+    <button class="bp-btn" data-bp="back">Back</button>
+    <button class="bp-btn" data-bp="shoulder">Shoulder</button>
+    <button class="bp-btn" data-bp="chest">Chest</button>
+    <button class="bp-btn" data-bp="abdomen">Abdomen</button>
+    <button class="bp-btn" data-bp="face">Face</button>
+    <button class="bp-btn" data-bp="other">Other</button>
+  </div>
+
+  <div id="canvas-wrap">
+    <img id="ref-img" src="" alt="Reference frame" draggable="false" />
+    <canvas id="draw-canvas"></canvas>
+    <div id="help-text">Drag to draw box, or switch to +/- click mode</div>
+  </div>
+
+  <div id="thumb-strip"></div>
+
+  <div class="footer">
+    <button class="btn btn-outline" id="btn-skip" style="flex:0 0 auto">Skip</button>
+    <button class="btn btn-teal" id="btn-confirm" style="flex:1" disabled>Confirm selection</button>
+  </div>
+</div>
+
+<div id="screen-done" class="screen">
+  <div class="done-icon">✅</div>
+  <div class="done-title">Processing started</div>
+  <div class="done-sub" id="done-sub">
+    Masks are being generated. The 3D model will be ready within a few minutes.<br><br>
+    You can close this page — the model will appear in the scan once complete.
+  </div>
+</div>
+
+<script>
+(function() {
+  // ---- state ----
+  var scanId = null;
+  var vid    = null;
+  var frames = [];         // anchor frame objects from server
+  var activeFrameIdx = 0;
+  var box = null;          // { x1, y1, x2, y2 } in canvas px
+  var points = [];         // [{ x, y, label: 1|0 }] — SAM 2 point prompts (1=pos, 0=neg)
+  var activeTool = 'box';  // 'box' | 'pos' | 'neg'
+  var bodyPart = 'torso';  // selected body-part class
+  var drawing = false;
+  var dragStart = null;
+
+  // ---- DOM ----
+  var refImg      = document.getElementById('ref-img');
+  var drawCanvas  = document.getElementById('draw-canvas');
+  var canvasWrap  = document.getElementById('canvas-wrap');
+  var ctx         = drawCanvas.getContext('2d');
+  var btnClear    = document.getElementById('btn-clear');
+  var btnConfirm  = document.getElementById('btn-confirm');
+  var btnSkip     = document.getElementById('btn-skip');
+  var thumbStrip  = document.getElementById('thumb-strip');
+  var helpText    = document.getElementById('help-text');
+
+  // ---- tool switching ----
+  document.querySelectorAll('.tool-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activeTool = btn.dataset.tool;
+      document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      drawCanvas.style.cursor = activeTool === 'box' ? 'crosshair' : 'pointer';
+      var labels = { box: 'Drag to draw bounding box', pos: 'Tap to add inclusion point', neg: 'Tap to add exclusion point' };
+      helpText.textContent = labels[activeTool] || '';
+    });
+  });
+
+  // ---- body-part selector ----
+  document.querySelectorAll('.bp-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      bodyPart = btn.dataset.bp;
+      document.querySelectorAll('.bp-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+    });
+  });
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(function(s) {
+      s.classList.toggle('active', s.id === id);
+    });
+  }
+  function showError(title, msg) {
+    document.getElementById('error-title').textContent = title;
+    document.getElementById('error-msg').textContent   = msg;
+    show('screen-error');
+  }
+  function getParam(n) { return new URLSearchParams(location.search).get(n); }
+
+  // ---- init ----
+  async function init() {
+    scanId = getParam('scan');
+    vid    = getParam('vid');
+    if (!scanId || !vid) {
+      showError('Invalid link', 'This link is missing required parameters. Please generate a new one from the scan page.');
+      return;
+    }
+    try {
+      var r = await fetch('/api/scans/' + scanId + '/anchor-frames', {
+        headers: { 'X-Visitor-Id': vid }
+      });
+      if (!r.ok) {
+        var e = await r.json().catch(function() { return {}; });
+        showError('Access denied', e.message || 'Could not load scan frames.');
+        return;
+      }
+      var data = await r.json();
+      frames = data.anchors || [];
+      if (frames.length === 0) {
+        showError('No frames', 'No anchor frames are available for this scan yet. Capture must complete first.');
+        return;
+      }
+      document.getElementById('scan-title').textContent = (data.scan && data.scan.title) || ('Scan #' + scanId);
+      buildThumbs();
+      selectFrame(0);
+      show('screen-draw');
+    } catch(e) {
+      showError('Connection error', 'Could not reach the BodyScan server: ' + (e.message || ''));
+    }
+  }
+
+  // ---- thumbnails ----
+  function buildThumbs() {
+    if (frames.length <= 1) return;
+    frames.forEach(function(f, i) {
+      var img = document.createElement('img');
+      img.className = 'thumb' + (i === 0 ? ' active' : '');
+      img.src = f.frameUrl;
+      img.onerror = function() { img.style.display='none'; };
+      img.addEventListener('click', function() { selectFrame(i); });
+      thumbStrip.appendChild(img);
+    });
+  }
+
+  function selectFrame(idx) {
+    activeFrameIdx = idx;
+    box = null;
+    points = [];
+    redraw();
+    updateConfirm();
+
+    // Update thumb highlights
+    var thumbs = thumbStrip.querySelectorAll('.thumb');
+    thumbs.forEach(function(t, i) { t.classList.toggle('active', i === idx); });
+
+    // Load image — size canvas once loaded
+    refImg.onload = function() { sizeCanvas(); };
+    refImg.src = frames[idx].frameUrl;
+  }
+
+  // ---- canvas sizing ----
+  function sizeCanvas() {
+    var rect = canvasWrap.getBoundingClientRect();
+    var imgNW = refImg.naturalWidth  || 1280;
+    var imgNH = refImg.naturalHeight || 720;
+    var scale = Math.min(rect.width / imgNW, rect.height / imgNH);
+    var dw = Math.round(imgNW * scale);
+    var dh = Math.round(imgNH * scale);
+    drawCanvas.width  = dw;
+    drawCanvas.height = dh;
+    drawCanvas.style.width  = dw + 'px';
+    drawCanvas.style.height = dh + 'px';
+    box = null;
+    redraw();
+    updateConfirm();
+  }
+
+  window.addEventListener('resize', function() {
+    if (frames.length > 0 && refImg.complete) sizeCanvas();
+  });
+
+  // ---- drawing (pointer events — works for both touch & mouse) ----
+  function canvasPoint(e) {
+    var rect = drawCanvas.getBoundingClientRect();
+    var src  = e.touches ? e.touches[0] : e;
+    return {
+      x: Math.max(0, Math.min(drawCanvas.width,  src.clientX - rect.left)),
+      y: Math.max(0, Math.min(drawCanvas.height, src.clientY - rect.top))
+    };
+  }
+
+  function onDragStart(e) {
+    e.preventDefault();
+    if (activeTool === 'pos' || activeTool === 'neg') {
+      // Point mode — single tap places a point
+      var p = canvasPoint(e);
+      points.push({ x: p.x, y: p.y, label: activeTool === 'pos' ? 1 : 0 });
+      redraw();
+      updateConfirm();
+      helpText.style.display = 'none';
+      return;
+    }
+    // Box mode
+    drawing = true;
+    dragStart = canvasPoint(e);
+    box = null;
+    redraw();
+    helpText.style.display = 'none';
+  }
+  function onDragMove(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = canvasPoint(e);
+    box = { x1: dragStart.x, y1: dragStart.y, x2: p.x, y2: p.y };
+    redraw();
+  }
+  function onDragEnd(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    drawing = false;
+    if (box) {
+      box = {
+        x1: Math.min(box.x1, box.x2),
+        y1: Math.min(box.y1, box.y2),
+        x2: Math.max(box.x1, box.x2),
+        y2: Math.max(box.y1, box.y2)
+      };
+      var w = box.x2 - box.x1, h = box.y2 - box.y1;
+      if (w < 10 || h < 10) { box = null; }
+    }
+    redraw();
+    updateConfirm();
+  }
+
+  drawCanvas.addEventListener('mousedown',  onDragStart);
+  drawCanvas.addEventListener('mousemove',  onDragMove);
+  drawCanvas.addEventListener('mouseup',    onDragEnd);
+  drawCanvas.addEventListener('mouseleave', onDragEnd);
+  drawCanvas.addEventListener('touchstart', onDragStart, { passive: false });
+  drawCanvas.addEventListener('touchmove',  onDragMove,  { passive: false });
+  drawCanvas.addEventListener('touchend',   onDragEnd,   { passive: false });
+
+  // ---- redraw ----
+  function redraw() {
+    ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+
+    // Draw box if present
+    if (box) {
+      var x = box.x1, y = box.y1, w = box.x2 - box.x1, h = box.y2 - box.y1;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+      ctx.clearRect(x, y, w, h);
+      ctx.strokeStyle = '#8b5cf6';
+      ctx.lineWidth   = 2;
+      ctx.strokeRect(x, y, w, h);
+      var hs = 8;
+      ctx.fillStyle = '#8b5cf6';
+      [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(function(c) {
+        ctx.fillRect(c[0]-hs/2, c[1]-hs/2, hs, hs);
+      });
+    }
+
+    // Draw point markers
+    points.forEach(function(pt) {
+      var r = 9;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = pt.label === 1 ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // + or - symbol
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pt.label === 1 ? '+' : '-', pt.x, pt.y);
+    });
+  }
+
+  btnClear.addEventListener('click', function() {
+    box = null; points = []; redraw(); updateConfirm();
+    helpText.style.display = '';
+  });
+
+  function updateConfirm() {
+    btnConfirm.disabled = !(box || points.length > 0);
+  }
+
+  // ---- submit ----
+  btnConfirm.addEventListener('click', async function() {
+    if (!box && points.length === 0) return;
+    var cw = drawCanvas.width  || 1;
+    var ch = drawCanvas.height || 1;
+    var frame = frames[activeFrameIdx];
+
+    // Build SAM 2-compatible anchor prompt
+    var anchor = { frameId: frame.id, bodyPart: bodyPart };
+    if (box) {
+      anchor.box = [box.x1 / cw, box.y1 / ch, box.x2 / cw, box.y2 / ch]; // normalised 0-1
+    }
+    if (points.length > 0) {
+      anchor.points = points.map(function(pt) {
+        return { x: pt.x / cw, y: pt.y / ch, label: pt.label }; // normalised coords + SAM label
+      });
+    }
+    var payload = { anchors: [anchor], bodyPart: bodyPart };
+    btnConfirm.disabled = true;
+    btnConfirm.textContent = 'Submitting...';
+    try {
+      var r = await fetch('/api/scans/' + scanId + '/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Visitor-Id': vid },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        var e = await r.json().catch(function() { return {}; });
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Confirm selection';
+        alert('Error: ' + (e.message || 'Submission failed. Please try again.'));
+        return;
+      }
+      show('screen-done');
+    } catch(e) {
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = 'Confirm selection';
+      alert('Network error: ' + (e.message || 'Please check your connection.'));
+    }
+  });
+
+  // Skip — submit without a box prompt (workers use automatic segmentation)
+  btnSkip.addEventListener('click', async function() {
+    if (!confirm('Skip target selection? The system will attempt automatic segmentation.')) return;
+    btnSkip.disabled = true;
+    try {
+      var r = await fetch('/api/scans/' + scanId + '/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Visitor-Id': vid },
+        body: JSON.stringify({ anchors: [] })  // empty = auto
+      });
+      if (r.ok) {
+        show('screen-done');
+      } else {
+        var e = await r.json().catch(function() { return {}; });
+        btnSkip.disabled = false;
+        alert('Error: ' + (e.message || 'Submission failed.'));
+      }
+    } catch(e) {
+      btnSkip.disabled = false;
+      alert('Network error: ' + (e.message || ''));
+    }
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>

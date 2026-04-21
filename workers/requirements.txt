@@ -1,0 +1,14 @@
+# BodyScan 3D — Python workers
+# Install: pip install -r requirements.txt
+# GPU (SAM 2): pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# CPU fallback (no GPU): pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+requests>=2.31.0
+Pillow>=10.0.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+pycolmap>=0.6.0
+trimesh>=4.0.0
+pymeshlab>=2023.12
+# SAM 2 — install from Meta repo:
+#   pip install git+https://github.com/facebookresearch/sam2.git

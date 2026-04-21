@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/capture-manifest.json" />
+  <title>BodyScan 3D — Capture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #0f172a;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100%;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    /* ---- screens ---- */
+    .screen { display: none; flex-direction: column; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* ---- loading screen ---- */
+    #screen-loading {
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    .spinner {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 4px solid #1e293b;
+      border-top-color: #14b8a6;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- error screen ---- */
+    #screen-error {
+      align-items: center; justify-content: center;
+      padding: 32px; gap: 16px; text-align: center;
+    }
+    #error-icon { font-size: 48px; }
+    #error-title { font-size: 20px; font-weight: 700; }
+    #error-msg { font-size: 14px; color: #94a3b8; line-height: 1.5; }
+    .btn-retry {
+      margin-top: 8px; padding: 12px 28px;
+      background: #14b8a6; border: none; border-radius: 10px;
+      color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+
+    /* ---- camera screen ---- */
+    #screen-camera { position: relative; }
+    #video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    /* overlay on top of video */
+    .cam-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: space-between;
+      padding: env(safe-area-inset-top, 20px) 20px env(safe-area-inset-bottom, 20px);
+      pointer-events: none;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.7) 100%);
+    }
+    .cam-top {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .cam-scan-title { font-size: 15px; font-weight: 600; color: #fff; }
+    #cam-frame-count { font-size: 13px; color: #14b8a6; font-weight: 700; }
+
+    /* guide ring */
+    .guide-ring {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px; height: 220px;
+      border-radius: 50%;
+      border: 2px solid rgba(20,184,166,0.5);
+      pointer-events: none;
+    }
+    .guide-ring::before {
+      content: '';
+      position: absolute;
+      top: -6px; left: -6px; right: -6px; bottom: -6px;
+      border-radius: 50%;
+      border: 1px solid rgba(20,184,166,0.2);
+    }
+
+    /* progress bar */
+    #progress-bar-wrap {
+      height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px;
+      overflow: hidden; margin: 0 8px;
+    }
+    #progress-bar {
+      height: 100%; background: #14b8a6;
+      border-radius: 2px; width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* flash overlay */
+    #flash {
+      position: absolute; inset: 0;
+      background: #fff; opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s;
+    }
+
+    /* guidance text */
+    #cam-guidance {
+      font-size: 14px; color: rgba(255,255,255,0.85);
+      text-align: center; padding: 0 24px;
+    }
+
+    /* shutter button */
+    .cam-bottom { display: flex; flex-direction: column; align-items: center; gap: 14px; pointer-events: all; }
+    #btn-shutter {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: #14b8a6; border: 4px solid #fff;
+      cursor: pointer; position: relative;
+      box-shadow: 0 4px 24px rgba(20,184,166,0.5);
+      -webkit-tap-highlight-color: transparent;
+    }
+    #btn-shutter:active { transform: scale(0.94); }
+    #btn-shutter.auto-mode { background: #3b82f6; border-color: #bfdbfe; }
+    #btn-shutter.uploading { background: #f59e0b; cursor: default; }
+    .shutter-inner {
+      position: absolute; inset: 8px;
+      border-radius: 50%; background: rgba(255,255,255,0.2);
+    }
+
+    #btn-auto-toggle {
+      padding: 8px 18px; background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2); border-radius: 20px;
+      color: #fff; font-size: 12px; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #btn-auto-toggle.on { background: rgba(59,130,246,0.3); border-color: #3b82f6; }
+
+    /* ---- done screen ---- */
+    #screen-done {
+      align-items: center; justify-content: center;
+      padding: 32px; gap: 16px; text-align: center;
+    }
+    .done-icon { font-size: 64px; }
+    .done-title { font-size: 22px; font-weight: 700; }
+    .done-sub { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+
+    /* ---- four-state review outcome buttons ---- */
+    .outcome-buttons {
+      display: flex; flex-direction: column; gap: 10px;
+      margin-top: 24px; width: 100%; max-width: 280px;
+    }
+    .outcome-btn {
+      padding: 14px 20px; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .outcome-btn:active { opacity: 0.8; }
+    .outcome-btn.usable     { background: #10b981; color: #fff; }
+    .outcome-btn.flags      { background: #f59e0b; color: #fff; }
+    .outcome-btn.patch      { background: #3b82f6; color: #fff; }
+    .outcome-btn.retry      { background: #ef4444; color: #fff; }
+    .outcome-btn .btn-label { display: block; font-size: 13px; opacity: 0.85; margin-top: 2px; }
+
+    /* ---- patch capture screen ---- */
+    #screen-patch {
+      align-items: center; justify-content: center;
+      padding: 32px; gap: 16px; text-align: center;
+    }
+    .patch-title { font-size: 20px; font-weight: 700; }
+    .patch-sub { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+    .patch-progress { font-size: 48px; font-weight: 700; color: #14b8a6; margin: 8px 0; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="screen-loading" class="screen active">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:#94a3b8">Initializing camera...</div>
+</div>
+
+<!-- Error -->
+<div id="screen-error" class="screen">
+  <div id="error-icon">⚠️</div>
+  <div id="error-title">Something went wrong</div>
+  <div id="error-msg">Unknown error</div>
+  <button class="btn-retry" onclick="location.reload()">Try again</button>
+</div>
+
+<!-- Camera -->
+<div id="screen-camera" class="screen">
+  <video id="video" autoplay playsinline muted></video>
+
+  <div class="guide-ring"></div>
+  <div id="flash"></div>
+
+  <div class="cam-overlay">
+    <div class="cam-top">
+      <div class="cam-scan-title" id="cam-title">Loading...</div>
+      <div id="cam-frame-count">0 / 30</div>
+    </div>
+
+    <div>
+      <div id="cam-guidance" style="margin-bottom:12px">
+        Slowly orbit the body area — keep the guide ring centred on the target
+      </div>
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    </div>
+
+    <div class="cam-bottom">
+      <button id="btn-shutter" aria-label="Capture frame">
+        <div class="shutter-inner"></div>
+      </button>
+      <button id="btn-auto-toggle">Auto: OFF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Done -->
+<div id="screen-done" class="screen">
+  <div class="done-icon">✅</div>
+  <div class="done-title">Capture complete!</div>
+  <div class="done-sub" id="done-sub">
+    All frames uploaded.<br>Return to the browser to select the target area.
+  </div>
+  <!-- CX-1 / CX-4: four-state review outcomes + patch offer (populated by JS) -->
+  <div class="outcome-buttons" id="outcome-buttons" style="display:none"></div>
+</div>
+
+<!-- CX-4: patch capture offer screen -->
+<div id="screen-patch" class="screen">
+  <div class="done-icon">📷</div>
+  <div class="patch-title">Patch Capture</div>
+  <div class="patch-sub" id="patch-sub">
+    Capture a few more frames to cover the gaps.
+  </div>
+  <div class="patch-progress" id="patch-progress">0 / 10</div>
+  <button class="btn-retry" id="btn-patch-done" style="display:none"
+    onclick="onPatchDone()">Done — Send Patches</button>
+</div>
+
+<script>
+(function() {
+  // ----- constants -----
+  var TARGET_FRAMES = 30;        // total frames to capture
+  var AUTO_INTERVAL_MS = 1200;   // ms between auto-capture shots
+  var MAX_DIMENSION = 1280;      // resize before upload (saves bandwidth, enough for colmap)
+  var JPEG_QUALITY  = 0.82;
+
+  // ----- state -----
+  var token    = null;
+  var scanId   = null;
+  var uploadBase = '';
+  var framesCaptured = 0;
+  var uploadQueue = [];
+  var uploading   = false;
+  var autoTimer   = null;
+  var autoMode    = false;
+  var stream      = null;
+  var canvas      = document.createElement('canvas');
+  var ctx         = canvas.getContext('2d');
+  // CX-6 / CX-7: intervention counters for capture UX telemetry
+  var autoModeCount     = 0;  // number of auto-capture triggers (M2 mode)
+  var manualShutterCount = 0; // manual shutter clicks (M1 mode)
+  var retryCount        = 0;  // retry events
+  var patchCount        = 0;  // patch capture initiations (CX-4)
+  // CX-4: patch capture state
+  var patchMode     = false;
+  var patchCaptured = 0;
+  var PATCH_TARGET  = 10;     // additional frames for patch capture
+
+  // ----- DOM refs -----
+  var video        = document.getElementById('video');
+  var btnShutter   = document.getElementById('btn-shutter');
+  var btnAutoToggle= document.getElementById('btn-auto-toggle');
+  var camTitle     = document.getElementById('cam-title');
+  var camFrameCount= document.getElementById('cam-frame-count');
+  var progressBar  = document.getElementById('progress-bar');
+  var camGuidance  = document.getElementById('cam-guidance');
+  var flashEl      = document.getElementById('flash');
+
+  // ----- screens -----
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(function(s) {
+      s.classList.toggle('active', s.id === id);
+    });
+  }
+
+  function showError(title, msg) {
+    document.getElementById('error-title').textContent = title;
+    document.getElementById('error-msg').textContent = msg;
+    show('screen-error');
+  }
+
+  // ----- parse query params -----
+  function getParam(name) {
+    return new URLSearchParams(location.search).get(name);
+  }
+
+  // ----- init -----
+  async function init() {
+    token  = getParam('token');
+    scanId = getParam('scan');
+    uploadBase = location.origin;
+
+    if (!token || !scanId) {
+      showError('Invalid link', 'This capture link is missing required parameters. Please go back and generate a new link.');
+      return;
+    }
+
+    // Validate token with server
+    try {
+      var vr = await fetch(uploadBase + '/api/capture/validate?token=' + encodeURIComponent(token));
+      if (!vr.ok) {
+        var e = await vr.json().catch(function() { return {}; });
+        showError('Link expired', e.message || 'This capture link has expired or is invalid. Please generate a new one.');
+        return;
+      }
+      var vd = await vr.json();
+      camTitle.textContent = vd.scanTitle || ('Scan #' + scanId);
+    } catch(e) {
+      showError('Connection error', 'Could not reach the BodyScan server. Make sure your phone and the server are on the same network.');
+      return;
+    }
+
+    // Start camera
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width:  { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+    } catch(e) {
+      if (e.name === 'NotAllowedError') {
+        showError('Camera access denied', 'Please allow camera access and reload this page. You may need to enable it in your browser settings.');
+      } else if (e.name === 'NotFoundError') {
+        showError('No camera found', 'No rear camera was detected on this device.');
+      } else {
+        showError('Camera error', e.message || 'Could not start the camera.');
+      }
+      return;
+    }
+
+    show('screen-camera');
+    btnShutter.addEventListener('click', onShutter);
+    btnAutoToggle.addEventListener('click', toggleAuto);
+  }
+
+  // ----- capture -----
+  function captureFrame() {
+    var maxFrames = patchMode ? (framesCaptured + PATCH_TARGET - patchCaptured) : TARGET_FRAMES;
+    if (!patchMode && framesCaptured >= TARGET_FRAMES) return;
+    if (patchMode && patchCaptured >= PATCH_TARGET) return;
+    var vw = video.videoWidth  || 1280;
+    var vh = video.videoHeight || 720;
+
+    // Resize to MAX_DIMENSION
+    var scale = Math.min(1, MAX_DIMENSION / Math.max(vw, vh));
+    canvas.width  = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Flash feedback
+    flashEl.style.opacity = '0.5';
+    setTimeout(function() { flashEl.style.opacity = '0'; }, 80);
+
+    var frameIndex = framesCaptured;
+    framesCaptured++;
+    if (patchMode) patchCaptured++;
+    updateUI();
+
+    canvas.toBlob(function(blob) {
+      if (blob) enqueueUpload(blob, frameIndex);
+    }, 'image/jpeg', JPEG_QUALITY);
+  }
+
+  function onShutter() {
+    if (patchMode && patchCaptured >= PATCH_TARGET) return;
+    if (!patchMode && framesCaptured >= TARGET_FRAMES) return;
+    if (autoMode) return;      // handled by timer
+    manualShutterCount++;       // CX-7: manual shutter click counter
+    captureFrame();
+  }
+
+  function toggleAuto() {
+    autoMode = !autoMode;
+    btnAutoToggle.textContent = 'Auto: ' + (autoMode ? 'ON' : 'OFF');
+    btnAutoToggle.classList.toggle('on', autoMode);
+    btnShutter.classList.toggle('auto-mode', autoMode);
+    if (autoMode) {
+      autoModeCount++;          // CX-6: auto mode entered (M2)
+      autoTimer = setInterval(function() {
+        var target = patchMode ? PATCH_TARGET : TARGET_FRAMES;
+        var current = patchMode ? patchCaptured : framesCaptured;
+        if (current >= target) {
+          clearInterval(autoTimer);
+          autoMode = false;
+          btnAutoToggle.textContent = 'Auto: OFF';
+          btnAutoToggle.classList.remove('on');
+          if (patchMode) {
+            var btn = document.getElementById('btn-patch-done');
+            if (btn) btn.style.display = 'inline-block';
+          }
+        } else {
+          captureFrame();
+          if (patchMode) {
+            patchCaptured++;
+            document.getElementById('patch-progress').textContent = patchCaptured + ' / ' + PATCH_TARGET;
+          }
+        }
+      }, AUTO_INTERVAL_MS);
+    } else {
+      clearInterval(autoTimer);
+    }
+  }
+
+  function updateUI() {
+    var target = patchMode ? PATCH_TARGET : TARGET_FRAMES;
+    var current = patchMode ? patchCaptured : framesCaptured;
+    var pct = Math.min(100, Math.round(current / target * 100));
+    camFrameCount.textContent = (patchMode ? '[PATCH] ' : '') + current + ' / ' + target;
+    progressBar.style.width = pct + '%';
+
+    if (current >= target) {
+      if (autoMode) { clearInterval(autoTimer); autoMode = false; }
+      if (!patchMode) {
+        btnShutter.disabled = true;
+        btnShutter.classList.add('uploading');
+        camGuidance.textContent = 'Uploading frames...';
+      }
+      btnAutoToggle.disabled = true;
+    } else if (current >= Math.floor(target * 0.3)) {
+      camGuidance.textContent = 'Great — keep orbiting slowly around the target';
+    }
+  }
+
+  // ----- upload queue -----
+  function enqueueUpload(blob, frameIndex) {
+    uploadQueue.push({ blob: blob, index: frameIndex });
+    if (!uploading) drainQueue();
+  }
+
+  async function drainQueue() {
+    if (uploadQueue.length === 0) {
+      uploading = false;
+      if (!patchMode && framesCaptured >= TARGET_FRAMES) onAllUploaded();
+      if (patchMode && patchCaptured >= PATCH_TARGET) onPatchUploaded();
+      return;
+    }
+    uploading = true;
+    var item = uploadQueue.shift();
+    try {
+      var fd = new FormData();
+      fd.append('token', token);
+      fd.append('scanId', scanId);
+      fd.append('frameIndex', item.index);
+      fd.append('frames', item.blob, 'frame_' + String(item.index).padStart(4,'0') + '.jpg');
+      // CX-6 / CX-7: send intervention counters with first frame of each batch
+      if (item.index < 3) {
+        fd.append('autoModeCount', autoModeCount);
+        fd.append('manualShutterCount', manualShutterCount);
+        fd.append('retryCount', retryCount);
+        fd.append('patchCount', patchCount);
+      }
+      // Include device manifest on first frame
+      if (item.index === 0) {
+        fd.append('manifest', JSON.stringify({
+          deviceModel: navigator.userAgent,
+          frameCount: TARGET_FRAMES,
+          captureMethod: 'pwa',
+          resolution: (video.videoWidth || 0) + 'x' + (video.videoHeight || 0),
+          timestamp: new Date().toISOString(),
+          // CX-6: M1/M2 ratio telemetry
+          autoModeCount: autoModeCount,
+          manualShutterCount: manualShutterCount
+        }));
+      }
+      var r = await fetch(uploadBase + '/api/capture/frames', { method: 'POST', body: fd });
+      if (!r.ok) {
+        var e = await r.json().catch(function() { return {}; });
+        // Non-fatal: log and continue
+        console.warn('Frame', item.index, 'upload failed:', e.message);
+      }
+    } catch(err) {
+      console.warn('Frame', item.index, 'upload error:', err.message);
+    }
+    drainQueue();
+  }
+
+  // CX-1: four-state review outcomes — shown on done screen
+  function showOutcomeButtons() {
+    var container = document.getElementById('outcome-buttons');
+    container.style.display = 'flex';
+    container.innerHTML =
+      '<button class="outcome-btn usable" onclick="onOutcomeSelected(\'USABLE\')">' +
+        'Looks Good' +
+        '<span class="btn-label">Ready for processing</span>' +
+      '</button>' +
+      '<button class="outcome-btn flags" onclick="onOutcomeSelected(\'USABLE_WITH_FLAGS\')">' +
+        'Accept with Flags' +
+        '<span class="btn-label">Some concerns noted</span>' +
+      '</button>' +
+      '<button class="outcome-btn patch" onclick="onOutcomeSelected(\'WORTH_PATCH\')">' +
+        'Patch Capture' +
+        '<span class="btn-label">Cover gaps with a few more shots</span>' +
+      '</button>' +
+      '<button class="outcome-btn retry" onclick="onOutcomeSelected(\'RETRY_RECOMMENDED\')">' +
+        'Start Over' +
+        '<span class="btn-label">Poor quality — try again</span>' +
+      '</button>';
+  }
+
+  window.onOutcomeSelected = function(outcome) {
+    var doneSub = document.getElementById('done-sub');
+    if (outcome === 'USABLE') {
+      doneSub.innerHTML = 'Capture accepted.<br>Redirecting to review...';
+      // USABLE: normal flow, just proceed to review
+      setTimeout(function() { window.location.href = '/'; }, 1500);
+    } else if (outcome === 'USABLE_WITH_FLAGS') {
+      doneSub.innerHTML = 'Capture accepted with flags.<br>Redirecting to review...';
+      // USABLE_WITH_FLAGS: proceed but flag in provenance
+      setTimeout(function() { window.location.href = '/'; }, 1500);
+    } else if (outcome === 'WORTH_PATCH') {
+      // CX-4: patch capture offer — restart camera in patch mode
+      startPatchCapture();
+    } else if (outcome === 'RETRY_RECOMMENDED') {
+      retryCount++;
+      doneSub.innerHTML = 'Starting new capture session...';
+      setTimeout(function() { window.location.reload(); }, 1500);
+    }
+  };
+
+  // CX-4: start patch capture mode
+  function startPatchCapture() {
+    patchMode = true;
+    patchCaptured = 0;
+    patchCount++;  // CX-14: track patch initiation for telemetry
+    // Restart camera for patch capture
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    }).then(function(s) {
+      stream = s;
+      video.srcObject = stream;
+      video.play();
+      document.getElementById('patch-progress').textContent = '0 / ' + PATCH_TARGET;
+      var btn = document.getElementById('btn-patch-done');
+      if (btn) btn.style.display = 'none';
+      show('screen-patch');
+      // Auto-start in auto mode
+      if (!autoMode) {
+        autoMode = true;
+        autoModeCount++;
+        btnAutoToggle.textContent = 'Auto: ON';
+        btnAutoToggle.classList.add('on');
+        btnShutter.classList.add('auto-mode');
+      }
+      autoTimer = setInterval(function() {
+        if (patchCaptured >= PATCH_TARGET) {
+          clearInterval(autoTimer);
+          autoMode = false;
+          btnAutoToggle.textContent = 'Auto: OFF';
+          btnAutoToggle.classList.remove('on');
+          var btn = document.getElementById('btn-patch-done');
+          if (btn) btn.style.display = 'inline-block';
+        } else {
+          captureFrame();
+        }
+      }, AUTO_INTERVAL_MS);
+    }).catch(function(e) {
+      console.warn('Camera restart failed for patch capture:', e.message);
+    });
+  }
+
+  // CX-4: send patch frames and return to review
+  window.onPatchDone = function() {
+    if (stream) stream.getTracks().forEach(function(t) { t.stop(); });
+    // Finalize patch (server handles additional frames)
+    var fd = new FormData();
+    fd.append('token', token);
+    fetch(uploadBase + '/api/capture/finalize', { method: 'POST', body: fd })
+      .catch(function(e) { console.warn('Patch finalize failed:', e.message); });
+    show('screen-done');
+    var doneSub = document.getElementById('done-sub');
+    doneSub.innerHTML = patchCaptured + ' patch frames added.<br>Redirecting to review...';
+    document.getElementById('outcome-buttons').style.display = 'none';
+    setTimeout(function() { window.location.href = '/'; }, 2000);
+  };
+
+  async function onAllUploaded() {
+    // Stop camera
+    if (stream) stream.getTracks().forEach(function(t) { t.stop(); });
+
+    // Finalize — transition UPLOADING → FRAME_QA on server
+    try {
+      var fd = new FormData();
+      fd.append('token', token);
+      await fetch(uploadBase + '/api/capture/finalize', { method: 'POST', body: fd });
+    } catch(e) {
+      console.warn('Finalize request failed:', e.message);
+    }
+
+    var doneSub = document.getElementById('done-sub');
+    doneSub.innerHTML = 'All ' + TARGET_FRAMES + ' frames uploaded.<br>Select an outcome below:';
+    show('screen-done');
+    showOutcomeButtons();
+  }
+
+  function onPatchUploaded() {
+    // Patch frames uploaded — handled by onPatchDone
+  }
+
+  // ----- start -----
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/capture-sw.js').catch(function() {});
+  }
+  init();
+})();
+</script>
+</body>
+</html>
