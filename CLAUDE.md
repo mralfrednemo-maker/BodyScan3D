@@ -28,7 +28,15 @@
 4. Repeat code review until zero findings.
 5. Only then move on.
 
-### Step 3: Work tracking
+### Step 3: Work structure — trust the persistence layer
+**Do NOT manage context manually.** The PreCompact hook + handoff files mean work persists regardless of context remaining. Structure every task as an independent, committable unit:
+
+1. Work in focused subagents (Agent tool) for independent tasks — the subagent output is committed to git, the handoff file is written, and the next session picks up exactly where you left off.
+2. Commit **at natural boundaries** — after each fix, after each gap analysis pass, after each feature implementation. Not just at session end.
+3. If a subagent is running and context runs low: **let it continue**. The PreCompact hook will fire, save state, and the next session resumes from the handoff file.
+4. If context is near 0%: launch the next task as a subagent and exit the main session cleanly. Don't try to squeeze more in.
+
+### Step 4: Work tracking
 After each significant action, update `PROGRESS.md`.
 On session end (or before compaction), commit progress to git:
 ```
