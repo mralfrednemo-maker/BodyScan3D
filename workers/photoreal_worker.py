@@ -151,8 +151,8 @@ def check_appearance_only(scan_id):
                 return 1
             if reg.get('registration_state') == 'FRAGMENTED':
                 return 1
-    except Exception:
-        pass
+    except requests.RequestException as e:
+        log(f'WARNING: reg-output unavailable for appearance_only check: {e}')
 
     try:
         r = requests.get(
@@ -164,8 +164,8 @@ def check_appearance_only(scan_id):
             geo = r.json()
             if geo.get('severe_geometry_concern') == 1:
                 return 1
-    except Exception:
-        pass
+    except requests.RequestException as e:
+        log(f'WARNING: geometry-output unavailable for appearance_only check: {e}')
 
     return 0
 
