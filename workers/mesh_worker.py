@@ -366,8 +366,6 @@ def run(scan_id):
 
         # Edit 1 — shoulder_width: symmetric lateral expansion of shoulder-region vertices
         # Shoulder band: upper 25–45 % of height, full lateral spread
-        shoulder_lo = [0.0, 0.60, 0.40]   # x_frac, y_frac (height), z_frac
-        shoulder_hi = [1.0, 0.90, 0.60]
         shoulder_idx = _box_indices(
             np.array([0.0, 0.60, 0.40]),
             np.array([1.0, 0.90, 0.60])

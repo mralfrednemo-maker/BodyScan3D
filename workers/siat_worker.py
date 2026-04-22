@@ -463,6 +463,10 @@ def run(scan_id):
 
     log(f'Generated {len(soft_results)} soft masks')
 
+    if not soft_results:
+        log('FATAL: no soft masks generated — cannot proceed')
+        sys.exit(1)
+
     # ── Step 5: Write output artifacts ───────────────────────────────────────
     out_paths = write_siat_outputs(
         scan_id, soft_results, blur_scores_map, len(all_frames), scan_siat_dir
