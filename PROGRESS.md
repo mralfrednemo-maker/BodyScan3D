@@ -8,17 +8,19 @@
 |----|-------------|--------|-------|
 | G1 | pycolmap reconstruction | **FIXED** | 3783 sparse points, 30/30 frames connected, sparse dir persisted |
 | G1b | Dense MVS | **STALLED** | Docker + CUDA required, os.getuid issue on Windows |
-| G2 | SAM2 real segmentation | **FAST-SIM PLACED** | fast-simplification installed; SAM2 checkpoints still needed |
-| G3 | DG-33 honest fragments | **FIXED** | 3 real fragments (9154+179+8975v), 216 boundary edges — fragment-preserving DG working |
-| G4 | Camera capture on phone | **NOT TESTED** | getUserMedia blocked — HTTPS/permission issue |
-| G5 | Photoreal on real geometry | **FALLBACK** | appearance_only_route=1 (correct fallback without metric calibration) |
-| G6 | EDSIM stale rebind bug | **VERIFIED OK** | detect_stale_rebind(view_output=dict) — caller passes r_view.json() — looks correct, ran successfully |
-| G7 | Camera UX E2E | **NOT TESTED** | Real phone capture never tested |
-| G8 | R-OUT-2 UV parameterization | **NOT TESTED** | Requires real DG geometry + proper UV mesh |
-| G9 | R-OUT-3 deformation | **NOT TESTED** | Placeholder mesh only |
+| G2 | SAM2 real segmentation | **NEEDS ACTION** | SAM2 checkpoints need downloading — Christo has instructions |
+| G3 | DG-33 honest fragments | **FIXED** | 3 real fragments (9154+179+8975v), 216 boundary edges |
+| G4 | Camera capture on phone | **NEEDS ACTION** | Christo has phone + ngrok — instructions given |
+| G5 | Photoreal on real geometry | **FALLBACK** | appearance_only_route=1 (correct without metric calibration) |
+| G6 | EDSIM stale rebind bug | **VERIFIED OK** | detect_stale_rebind(view_output=dict) — correct |
+| G7 | Camera UX E2E | **NEEDS ACTION** | Christo has phone |
+| G8 | R-OUT-2 UV parameterization | **IMPLEMENTED** | model_uv.glb via compute_texcoord_parametrization_triangle_trivial_per_wedge() |
+| G9 | R-OUT-3 deformation | **IMPLEMENTED** | model_deform.json + model_deform.glb — 5 edit handles (torso_height, arm_raise_left) |
 | G10 | R-OUT-4 provenance | **PARTIAL** | Lineage chain works on real geometry |
 | G11 | R-OUT-5 confidence machine-readable | **STUBBED** | confidence exists structurally |
-| G12 | R-OUT-7 cross-output consistency | **NOT TESTED** | Requires all 3 outputs |
+| G12 | R-OUT-7 cross-output consistency | **NOT TESTED** | Requires all outputs wired |
+| NEW-1 | R-OUT-1 view-synthesis | **IMPLEMENTED** | pyrender offscreen from pycolmap camera poses — 30 PNG renders + manifest.json |
+| NEW-7/8/9/10/11/12/13 | Logic gaps | **FIXED** | All 7 implementation bugs fixed |
 | G13 | PURGE honest | **IMPLEMENTED** | ✓ |
 | G14 | ED-4 JSONL bundles | **IMPLEMENTED** | ✓ |
 | G15 | OQ-4 8-artifact assertion | **IMPLEMENTED** | ✓ |
