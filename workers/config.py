@@ -15,8 +15,8 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Feature flags
 SAM2_MOCK      = os.environ.get('SAM2_MOCK', '').lower() in ('1', 'true', 'yes')
-SAM2_CHECKPOINT = os.environ.get('SAM2_CHECKPOINT', 'sam2_hiera_small.pt')
-SAM2_CONFIG     = os.environ.get('SAM2_CONFIG', 'sam2_hiera_s.yaml')
+SAM2_CHECKPOINT = os.environ.get('SAM2_CHECKPOINT', 'sam2/checkpoints/sam2.1_hiera-large.pt')
+SAM2_CONFIG     = os.environ.get('SAM2_CONFIG', 'sam2/configs/sam2.1/sam2.1_hiera-large.yaml')
 
 # Frame QA
 MIN_FRAMES_REQUIRED = int(os.environ.get('MIN_FRAMES_REQUIRED', '10'))

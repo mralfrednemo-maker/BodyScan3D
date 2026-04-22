@@ -14,6 +14,7 @@ Usage:
 """
 import sys
 import os
+import contextlib
 import requests
 import numpy as np
 
@@ -108,7 +109,8 @@ def sam2_masks(scan_id, frames, prompt_anchor, out_dir):
     norm_box = prompt_anchor.get('box') if prompt_anchor else None
     norm_points = prompt_anchor.get('points', []) if prompt_anchor else []
 
-    with torch.inference_mode(), torch.autocast(device, dtype=torch.bfloat16):
+    autocast_ctx = torch.autocast(device, dtype=torch.bfloat16) if device == 'cuda' else contextlib.nullcontext()
+    with torch.inference_mode(), autocast_ctx:
         state = predictor.init_state(video_path=frame_dir)
 
         from PIL import Image

@@ -23,6 +23,7 @@ Usage:
 import sys
 import os
 import json
+import contextlib
 import requests
 import numpy as np
 
@@ -103,7 +104,8 @@ def sam2_soft_masks(scan_id, frames, prompt_anchor, out_dir):
     norm_box = (prompt_anchor or {}).get('box')
     norm_points = (prompt_anchor or {}).get('points', [])
 
-    with torch.inference_mode(), torch.autocast(device, dtype=torch.bfloat16):
+    autocast_ctx = torch.autocast(device, dtype=torch.bfloat16) if device == 'cuda' else contextlib.nullcontext()
+    with torch.inference_mode(), autocast_ctx:
         state = predictor.init_state(video_path=frame_dir)
         img = Image.open(frame_paths[prompt_idx])
         iw, ih = img.size
@@ -477,7 +479,8 @@ def run(scan_id):
         'hard_mask_path': f'{base_url}/hard_mask_{first_frame_id:06d}.png',
         'boundary_conf_path': f'{base_url}/boundary_conf_{first_frame_id:06d}.png',
         # SI-1 required: rigid core (intersection) + pose-safe support (union minus edges)
-        'static_rigid_core_path': f'{base_url}/static_rigid_core.png',
+        # Only include if actually computed (all_core_masks was non-empty)
+        **({} if '_static_rigid_core_path' not in paths else {'static_rigid_core_path': f'{base_url}/static_rigid_core.png'}),
         'pose_safe_support_mask_path': f'{base_url}/pose_safe_support.png',
     }
 

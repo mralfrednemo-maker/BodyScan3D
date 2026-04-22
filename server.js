@@ -1475,8 +1475,8 @@ app.post('/api/internal/scans/:id/siat-output', requireInternal, (req, res) => {
   const insert = db.prepare(`
     INSERT INTO siat_outputs
       (scan_id, output_version, alpha_soft_path, core_mask_path, hard_mask_path,
-       boundary_conf_path, ambiguity_tags_json, occlusion_labels_json,
-       static_rigid_core_path, pose_safe_support_mask_path)
+       static_rigid_core_path, boundary_conf_path, ambiguity_tags_json, occlusion_labels_json,
+       pose_safe_support_mask_path)
     VALUES (?,?,?,?,?,?,?,?,?,?)`);
 
   const result = insert.run(

@@ -84,8 +84,11 @@ def _fail(scan_id, failure_class, message):
 # ---------------------------------------------------------------------------
 
 def _maybe_translate_windows_path(p):
-    """Convert C:\\Users\\... to /mnt/c/Users/... when worker runs in WSL."""
+    """Convert C:\\Users\\... to /mnt/c/Users/... only when running inside WSL."""
     if not p:
+        return p
+    # Only attempt WSL translation when /mnt/c exists (WSL environment indicator)
+    if not os.path.exists('/mnt/c'):
         return p
     if len(p) >= 3 and p[1] == ':' and p[2] in ('\\', '/'):
         drive = p[0].lower()

@@ -40,6 +40,7 @@ def compute_lineage_fingerprint(scan_id):
     reg_output, geometry_output.
     """
     hashes = []
+    missing_sources = []
 
     # 1. Frame content hashes
     r = requests.get(
@@ -52,6 +53,8 @@ def compute_lineage_fingerprint(scan_id):
         for f in frames:
             if f.get('content_hash'):
                 hashes.append(f['content_hash'])
+    else:
+        missing_sources.append('frames')
 
     # 2. FSCQI bundle hash (verdict + health summary)
     r = requests.get(
@@ -66,6 +69,8 @@ def compute_lineage_fingerprint(scan_id):
             'health': bundle.get('health_summary'),
         }, sort_keys=True)
         hashes.append(hashlib.sha256(bundle_str.encode()).hexdigest())
+    else:
+        missing_sources.append('fscqi')
 
     # 3. SIAT output hash
     r = requests.get(
@@ -76,6 +81,8 @@ def compute_lineage_fingerprint(scan_id):
     if r.ok:
         siat = r.json()
         hashes.append(hashlib.sha256(json.dumps(siat, sort_keys=True).encode()).hexdigest())
+    else:
+        missing_sources.append('siat')
 
     # 4. REG output hash
     r = requests.get(
@@ -90,6 +97,8 @@ def compute_lineage_fingerprint(scan_id):
             'scale_regime': reg.get('scale_regime'),
             'metric_trust_allowed': reg.get('metric_trust_allowed'),
         }, sort_keys=True).encode()).hexdigest())
+    else:
+        missing_sources.append('reg')
 
     # 5. Geometry output hash
     r = requests.get(
@@ -103,6 +112,17 @@ def compute_lineage_fingerprint(scan_id):
             'fragment_count': len(json.loads(geo.get('fragment_set_json', '[]'))),
             'severe_concern': geo.get('severe_geometry_concern'),
         }, sort_keys=True).encode()).hexdigest())
+    else:
+        missing_sources.append('geometry')
+
+    if not hashes:
+        return hashlib.sha256(b'empty_lineage').hexdigest()
+
+    # Include missing source markers so incomplete pipelines produce distinguishable fingerprints
+    if missing_sources:
+        hashes.append(hashlib.sha256(
+            json.dumps({'missing': sorted(missing_sources)}, sort_keys=True).encode()
+        ).hexdigest())
 
     if not hashes:
         return hashlib.sha256(b'empty_lineage').hexdigest()

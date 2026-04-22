@@ -271,8 +271,13 @@ def run(scan_id):
         # If scaffold generation fails, produce a second-rate placeholder so they
         # remain distinct — never point both to the same URL.
         try:
+            import fast_simplification
             target_faces = max(4, int(len(mesh.faces) * 0.15))
-            scaffold_mesh = mesh.simplify_quadric_decimation(target_faces)
+            target_ratio = 1 - (target_faces / len(mesh.faces))
+            new_verts, new_faces = fast_simplification.simplify(
+                mesh.vertices, mesh.faces, target_reduction=target_ratio
+            )
+            scaffold_mesh = trimesh.Trimesh(vertices=new_verts, faces=new_faces)
             scaffold_path = os.path.join(scan_models_dir, 'appearance_scaffold.glb')
             scaffold_mesh.export(scaffold_path)
             appearance_scaffold_url = f'/uploads/models/{scan_id}/appearance_scaffold.glb'

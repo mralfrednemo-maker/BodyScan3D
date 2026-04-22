@@ -252,7 +252,7 @@ def write_edsim_jsonl(scan_id, placement_authority, preview_authority, edit_regi
     preview_zones = preview_authority.get('preview_zones', [])
     for pz in placement_zones:
         fid = pz.get('fragment_id')
-        matching_preview = [pz for pz in preview_zones if pz.get('fragment_id') == fid]
+        matching_preview = [prz for prz in preview_zones if prz.get('fragment_id') == fid]
         bindings.append({
             'ts': ts(),
             'fragment_id': fid,
