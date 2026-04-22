@@ -42,7 +42,7 @@ except ImportError:
 sys.path.insert(0, os.path.dirname(__file__))
 from config import (
     API_BASE, FRAMES_DIR, MASKS_DIR, internal_headers,
-    SAM2_MOCK
+    SAM2_MOCK, SAM2_CONFIG, SAM2_CHECKPOINT
 )
 
 
@@ -74,11 +74,15 @@ def sam2_soft_masks(scan_id, frames, prompt_anchor, out_dir):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     log(f'SAM 2 device: {device}')
 
-    predictor = build_sam2_video_predictor(
-        os.environ.get('SAM2_CONFIG', 'sam2/configs/sam2.1/sam2.1_hiera-large.yaml'),
-        os.environ.get('SAM2_CHECKPOINT', 'sam2/checkpoints/sam2.1_hiera-large.pt'),
-        device=device
-    )
+    from hydra import initialize, compose
+    import os as _os
+    _cfg_path = _os.path.dirname(SAM2_CONFIG)  # relative: sam2/configs/sam2.1
+    with initialize(config_path=_cfg_path, version_base='1.2'):
+        predictor = build_sam2_video_predictor(
+            _os.path.basename(SAM2_CONFIG),
+            SAM2_CHECKPOINT,
+            device=device
+        )
 
     import tempfile, shutil
     frame_dir = tempfile.mkdtemp(prefix=f'bs3d_siat_{scan_id}_')
@@ -459,7 +463,7 @@ def run(scan_id):
         log('SAM2_MOCK=1 — generating mock soft masks')
         soft_results = mock_soft_masks(primary_frames, prompt_anchor, scan_siat_dir)
     else:
-        soft_results = sam2_soft_masks(primary_frames, prompt_anchor, scan_siat_dir)
+        soft_results = sam2_soft_masks(scan_id, primary_frames, prompt_anchor, scan_siat_dir)
 
     log(f'Generated {len(soft_results)} soft masks')
 
@@ -484,7 +488,7 @@ def run(scan_id):
         'boundary_conf_path': f'{base_url}/boundary_conf_{first_frame_id:06d}.png',
         # SI-1 required: rigid core (intersection) + pose-safe support (union minus edges)
         # Only include if actually computed (all_core_masks was non-empty)
-        **({} if '_static_rigid_core_path' not in paths else {'static_rigid_core_path': f'{base_url}/static_rigid_core.png'}),
+        **({} if '_static_rigid_core_path' not in out_paths else {'static_rigid_core_path': f'{base_url}/static_rigid_core.png'}),
         'pose_safe_support_mask_path': f'{base_url}/pose_safe_support.png',
     }
 

@@ -79,7 +79,15 @@ def sam2_masks(scan_id, frames, prompt_anchor, out_dir):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     log(f'SAM 2 device: {device}')
 
-    predictor = build_sam2_video_predictor(SAM2_CONFIG, SAM2_CHECKPOINT, device=device)
+    from hydra import initialize, compose
+    import os as _os
+    _cfg_path = _os.path.dirname(SAM2_CONFIG)  # relative: sam2/configs/sam2.1
+    with initialize(config_path=_cfg_path, version_base='1.2'):
+        predictor = build_sam2_video_predictor(
+            _os.path.basename(SAM2_CONFIG),
+            SAM2_CHECKPOINT,
+            device=device
+        )
 
     # Build frame directory with symlinks in sort order (SAM 2 expects a directory)
     import tempfile
@@ -141,7 +149,7 @@ def sam2_masks(scan_id, frames, prompt_anchor, out_dir):
 
         results = []
         for frame_idx, obj_ids, mask_logits in predictor.propagate_in_video(state):
-            mask_np = (mask_logits[0, 0] > 0.0).cpu().numpy().astype(np.uint8) * 255
+            mask_np = (torch.sigmoid(mask_logits[0, 0]) > 0.5).cpu().numpy().astype(np.uint8) * 255
             frame_id = frames[frame_idx]['id']
             out_path = os.path.join(out_dir, f'mask_{frame_id:06d}.png')
             try:
