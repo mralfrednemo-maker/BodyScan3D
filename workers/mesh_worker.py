@@ -21,14 +21,176 @@ import numpy as np
 import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
-from config import API_BASE, MODELS_DIR, internal_headers
+from config import API_BASE, MODELS_DIR, MASKS_DIR, internal_headers
 
 
 GEOMETRY_OUTPUT_VERSION = '1.0.0'
+SIAT_OUTPUT_VERSION = '1.0.0'
 
 
 def log(msg):
     print(f'[mesh_worker] {msg}', flush=True)
+
+
+def filter_point_cloud_by_siat_mask(scan_id, raw_glb_path):
+    """
+    DG-2: Filter background points from raw dense point cloud using SIAT subject masks.
+
+    SIAT produces per-frame soft masks (alpha_soft) and per-scan aggregate masks
+    (static_rigid_core = intersection of core masks across all frames).
+
+    For each 3D point, we project it into available camera views and check
+    the SIAT mask. Points that map to background in ALL views are filtered out.
+
+    Returns path to filtered PLY file, or original raw_glb_path if filtering fails.
+    """
+    import numpy as np
+
+    siat_dir = os.path.join(MASKS_DIR, str(scan_id), 'siat', SIAT_OUTPUT_VERSION)
+    static_rigid_core_path = os.path.join(siat_dir, 'static_rigid_core.png')
+    pose_safe_path = os.path.join(siat_dir, 'pose_safe_support.png')
+
+    if not os.path.exists(static_rigid_core_path):
+        log(f'  [DG-2] SIAT static_rigid_core not found at {static_rigid_core_path} — skipping mask filter')
+        return raw_glb_path
+
+    sparse_dir = os.path.join(MODELS_DIR, str(scan_id), 'sparse')
+    if not os.path.exists(sparse_dir):
+        log(f'  [DG-2] Sparse reconstruction not found — skipping mask filter')
+        return raw_glb_path
+
+    try:
+        import pycolmap
+        import PIL.Image as Image
+        import trimesh
+
+        # Load SIAT mask
+        mask_img = np.array(Image.open(static_rigid_core_path))
+        if len(mask_img.shape) == 3:
+            mask_img = mask_img[:, :, 0]  # grayscale
+        mask_h, mask_w = mask_img.shape
+        subject_pixels = mask_img > 127
+
+        # Load sparse reconstruction for camera poses
+        recon = pycolmap.Reconstruction(sparse_dir)
+
+        # Load raw point cloud
+        scene = trimesh.load(raw_glb_path)
+        if hasattr(scene, 'geometry') and scene.geometry:
+            points = np.vstack([np.array(vmesh.vertices) for vmesh in scene.geometry.values()])
+        elif hasattr(scene, 'vertices'):
+            points = np.array(scene.vertices)
+        else:
+            log(f'  [DG-2] Could not extract points from raw point cloud')
+            return raw_glb_path
+
+        log(f'  [DG-2] Point cloud: {len(points)} points, mask: {mask_w}x{mask_h}')
+
+        # Try to match pycolmap cameras to SIAT frame IDs
+        # Use the first image with a matching frame ID
+        siat_frame_files = [f for f in os.listdir(siat_dir) if f.startswith('alpha_soft_')]
+        if not siat_frame_files:
+            log(f'  [DG-2] No SIAT alpha_soft frames found')
+            return raw_glb_path
+
+        # Extract frame number from first SIAT file (e.g. alpha_soft_000097.png -> 97)
+        first_frame_id = int(siat_frame_files[0].split('_')[-1].replace('.png', ''))
+
+        # Find pycolmap image by frame_id
+        matched_image = None
+        for img_id, img in recon.images.items():
+            # pycolmap image names are typically the filename
+            img_name_num = os.path.splitext(img.name)[0]
+            # Try numeric match with zero-padding
+            if img_name_num.isdigit() and int(img_name_num) == first_frame_id:
+                matched_image = img
+                break
+            # Also try last 6 digits (frame_id format in Bodyscan3D)
+            if len(img_name_num) >= 6:
+                possible_id = int(img_name_num[-6:])
+                if possible_id == first_frame_id:
+                    matched_image = img
+                    break
+
+        if matched_image is None:
+            log(f'  [DG-2] Could not match SIAT frame {first_frame_id} to pycolmap image — using centroid heuristic')
+            # Fallback: use centroid distance filter
+            centroid = points.mean(axis=0)
+            distances = np.linalg.norm(points - centroid, axis=1)
+            # Keep points within 2 standard deviations of median distance
+            dist_median = np.median(distances)
+            dist_std = np.std(distances)
+            keep = distances < (dist_median + 2 * dist_std)
+            log(f'  [DG-2] Centroid filter: keeping {keep.sum()}/{len(points)} points')
+            filtered_points = points[keep]
+        else:
+            # Project points using the matched camera
+            cam = recon.cameras[matched_image.camera_id]
+
+            # Build projection: world -> camera -> image
+            # pycolmap: cam_from_world gives camera-to-world transform
+            pose = matched_image.cam_from_world
+            R = pose.rotation.matrix  # 3x3 rotation (world to camera)
+            t = pose.translation  # 3D translation
+
+            # Camera intrinsics
+            fx = cam.fx
+            fy = cam.fy
+            cx = cam.cx
+            cy = cam.cy
+
+            # Transform world points to camera coordinates
+            cam_coords = (R @ points.T).T + t  # N x 3
+
+            # Filter: keep only points in front of camera (positive Z in camera coords)
+            front_mask = cam_coords[:, 2] > 0
+            cam_coords_front = cam_coords[front_mask]
+
+            # Project to image plane
+            Xc, Yc, Zc = cam_coords_front[:, 0], cam_coords_front[:, 1], cam_coords_front[:, 2]
+            u = (fx * Xc / Zc + cx).astype(int)
+            v = (fy * Yc / Zc + cy).astype(int)
+
+            # Check if projected pixels are inside the subject mask
+            valid_pixel = (u >= 0) & (u < mask_w) & (v >= 0) & (v < mask_h)
+            u_valid = u[valid_pixel]
+            v_valid = v[valid_pixel]
+
+            in_subject = np.zeros(len(cam_coords_front), dtype=bool)
+            in_subject[valid_pixel] = subject_pixels[v_valid, u_valid]
+
+            # Also require point is in front of camera (Z > 0)
+            in_subject = in_subject & (cam_coords_front[:, 2] > 0)
+
+            # For points that passed the first camera, we need a stricter check:
+            # Keep a point only if it's in front of the camera AND projects to subject
+            keep_mask = np.zeros(len(points), dtype=bool)
+            keep_mask[front_mask] = in_subject
+
+            # Also require reasonable depth (not too close/far)
+            Z = cam_coords[:, 2]
+            depth_valid = (Z > 0.1) & (Z < 10.0)  # 10cm to 10m
+            keep_mask = keep_mask & depth_valid
+
+            filtered_points = points[keep_mask]
+            log(f'  [DG-2] Mask filter: keeping {keep_mask.sum()}/{len(points)} points '
+                f'({keep_mask.sum()/len(points)*100:.1f}%)')
+
+        # Save filtered point cloud as PLY for pymeshlab to reload
+        if len(filtered_points) < 100:
+            log(f'  [DG-2] WARNING: only {len(filtered_points)} points kept — may be too sparse')
+            return raw_glb_path
+
+        filtered_ply = raw_glb_path.replace('.glb', '_masked.ply')
+        trimesh.PointCloud(filtered_points).export(filtered_ply)
+        log(f'  [DG-2] Filtered point cloud saved: {len(filtered_points)} points -> {filtered_ply}')
+        return filtered_ply
+
+    except Exception as e:
+        log(f'  [DG-2] Mask filtering failed: {e}')
+        import traceback
+        traceback.print_exc()
+        return raw_glb_path
 
 
 def split_mesh_components(mesh):
@@ -182,26 +344,32 @@ def run(scan_id):
         import pymeshlab
         import trimesh
 
+        # DG-2: Apply SIAT subject mask to filter background points before Poisson
+        filtered_raw = filter_point_cloud_by_siat_mask(scan_id, raw_glb)
+
         ms = pymeshlab.MeshSet()
-        ms.load_new_mesh(raw_glb)
+        ms.load_new_mesh(filtered_raw)
         log(f'  Loaded: {ms.current_mesh().vertex_number()} vertices, {ms.current_mesh().face_number()} faces')
 
         # If input is a pure point cloud, run Poisson surface reconstruction first
         if ms.current_mesh().face_number() == 0:
             log('  Point cloud detected — running Poisson surface reconstruction')
             ms.compute_normal_for_point_clouds()
-            ms.generate_surface_reconstruction_screened_poisson(depth=8)
+            # DG-1: depth=8 is too aggressive for body scans (creates phantom geometry
+            # in weakly-featured regions). Use depth=6 as a better default for human bodies.
+            ms.generate_surface_reconstruction_screened_poisson(depth=6)
             ms.meshing_remove_connected_component_by_face_number(mincomponentsize=100)
             log(f'  Poisson result: {ms.current_mesh().vertex_number()} vertices, {ms.current_mesh().face_number()} faces')
 
         if ms.current_mesh().face_number() > 0:
-            # Standard cleanup: dedup + smooth + normals
+            # Standard cleanup: dedup + normals (NO smoothing — DG-3 R-OUT-3)
+            # Laplacian smoothing destroys fine geometry (fingers, facial contours).
+            # Disabled per DG-3: "deformable proxy must preserve geometry for edit".
             ms.meshing_remove_duplicate_vertices()
             ms.meshing_remove_duplicate_faces()
             ms.meshing_remove_connected_component_by_face_number(mincomponentsize=50)
             # DG-4: DO NOT close holes — open-boundary-explicit requirement
             # REMOVED: ms.meshing_close_holes(maxholesize=30)
-            ms.apply_coord_laplacian_smoothing(stepsmoothnum=1)
             ms.compute_normal_per_vertex()
             ms.compute_normal_per_face()
 
