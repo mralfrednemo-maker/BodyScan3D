@@ -17,6 +17,7 @@ Usage:
 import sys
 import os
 import json
+import numpy as np
 import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -30,71 +31,95 @@ def log(msg):
     print(f'[mesh_worker] {msg}', flush=True)
 
 
-def split_mesh_components(ms):
+def split_mesh_components(mesh):
     """
     Split mesh into connected surface fragments.
     Returns list of fragment dicts with vertex/face counts.
+
+    Uses pymeshlab.generate_splitting_by_connected_components() to extract
+    connected components.
     """
     import pymeshlab
+    import numpy as np
 
     fragments = []
-    ms_split = pymeshlab.MeshSet()
-    # Extract connected components as separate meshes
-    # ms.current_mesh() is the cleaned mesh
-    mesh = ms.current_mesh()
-    n_frag = 1  # single fragment for now
+    ms = pymeshlab.MeshSet()
+
+    if hasattr(mesh, 'vertices') and hasattr(mesh, 'faces'):
+        # trimesh object — convert via pymeshlab.Mesh constructor
+        v = np.array(mesh.vertices, dtype=np.float64)
+        f = np.array(mesh.faces, dtype=np.int32)
+        pmesh = pymeshlab.Mesh(vertex_matrix=v, face_matrix=f)
+        ms.add_mesh(pmesh)
+    else:
+        # Already a pymeshlab object — add a copy
+        ms.add_mesh(mesh)
+
     try:
-        # Try to split by connected components
-        ms_temp = pymeshlab.MeshSet()
-        ms_temp.copy_mesh(ms.current_mesh())
-        components = ms_temp.extract_connected_components()
-        for i, comp_mesh in enumerate(components):
+        ms.generate_splitting_by_connected_components()
+        n_frag = ms.mesh_number()
+        for i in range(n_frag):
+            ms.set_current_mesh(i)
+            comp = ms.current_mesh()
             fragments.append({
                 'fragment_id': i,
-                'vertex_count': comp_mesh.vertex_number(),
-                'face_count': comp_mesh.face_number(),
-                'is_anchor_zone': False  # anchor detection deferred to EDSIM
+                'vertex_count': comp.vertex_number(),
+                'face_count': comp.face_number(),
+                'is_anchor_zone': False
             })
-        n_frag = len(fragments)
-    except Exception:
-        # Fallback: single fragment
-        fragments.append({
-            'fragment_id': 0,
-            'vertex_count': mesh.vertex_number(),
-            'face_count': mesh.face_number(),
-            'is_anchor_zone': False
-        })
+    except Exception as e:
+        if not fragments:
+            fragments.append({
+                'fragment_id': 0,
+                'vertex_count': ms.current_mesh().vertex_number(),
+                'face_count': ms.current_mesh().face_number(),
+                'is_anchor_zone': False
+            })
 
-    log(f'  Fragment count: {n_frag}')
+    log(f'  Fragment count: {len(fragments)}')
     return fragments
 
 
-def compute_open_boundaries(ms):
+def compute_open_boundaries(mesh_path):
     """
-    Compute open boundary map — faces that are on the edge of the mesh
-    (boundary edges, not interior). DG-4: open-boundary-explicit.
+    Compute open boundary map — boundary edges that are on the edge of the mesh
+    (edges that appear in only one face). DG-4: open-boundary-explicit.
 
     Returns dict with hole boundaries and open boundary count.
     """
-    mesh = ms.current_mesh()
-    # Count boundary edges: edges that appear only once in the face set
-    boundary_edges = 0
     try:
-        # Use face adjacency to find boundary
-        # A boundary edge is one where only one face references it
-        n_faces = mesh.face_number()
-        boundary_edges = max(0, int(n_faces * 0.02))  # fallback heuristic
-        # Real computation: PyMeshLab has no direct boundary edge count
-        # Use number of non-manifold vertices as proxy
-        # This is an approximation — full boundary tracking requires edge mesh analysis
-    except Exception:
-        boundary_edges = 0
+        import trimesh
+        from collections import Counter
 
-    return {
-        'open_boundary_edge_count': boundary_edges,
-        'has_open_holes': boundary_edges > 0,
-        'note': 'boundary_edges is heuristic — full edge tracking requires edge mesh analysis'
-    }
+        scene = trimesh.load(mesh_path)
+        if hasattr(scene, 'geometry') and scene.geometry:
+            mesh = list(scene.geometry.values())[0]
+        else:
+            mesh = scene
+
+        if not hasattr(mesh, 'edges_unique') or not hasattr(mesh, 'faces'):
+            return {
+                'open_boundary_edge_count': 0,
+                'has_open_holes': False,
+                'note': 'not a valid mesh (PointCloud or no edges)'
+            }
+
+        # Boundary edges = unique edges that appear in only one face
+        edge_idx_counts = Counter(mesh.edges_unique_inverse)
+        boundary_mask = np.array([count == 1 for count in edge_idx_counts.values()])
+        boundary_edges = mesh.edges_unique[boundary_mask]
+
+        return {
+            'open_boundary_edge_count': len(boundary_edges),
+            'has_open_holes': len(boundary_edges) > 0,
+            'note': 'computed via trimesh edges_unique boundary analysis'
+        }
+    except Exception as e:
+        return {
+            'open_boundary_edge_count': 0,
+            'has_open_holes': False,
+            'note': f'boundary computation failed: {e}'
+        }
 
 
 def compute_usefulness_zones(mesh_path, fragments):
@@ -189,10 +214,14 @@ def run(scan_id):
 
             log(f'  After cleanup: {ms.current_mesh().vertex_number()} vertices, {ms.current_mesh().face_number()} faces')
 
+            # Save intermediate mesh for boundary/zone analysis (PLY → will load as GLB)
+            cleaned_ply_tmp = os.path.join(scan_models_dir, '_cleaned_tmp.ply')
+            ms.save_current_mesh(cleaned_ply_tmp)
+
             # ── DG artifacts ──────────────────────────────────────────────────────
-            fragments = split_mesh_components(ms)
-            open_boundaries = compute_open_boundaries(ms)
-            usefulness_zones = compute_usefulness_zones(raw_glb, fragments)
+            fragments = split_mesh_components(ms.current_mesh())
+            open_boundaries = compute_open_boundaries(cleaned_ply_tmp)
+            usefulness_zones = compute_usefulness_zones(cleaned_ply_tmp, fragments)
 
             # severe_geometry_concern: 1 if no anchor zone
             # Deferred to EDSIM which has the actual placement authority map
@@ -257,6 +286,11 @@ def run(scan_id):
             appearance_scaffold_url = f'/uploads/models/{scan_id}/appearance_scaffold.glb'
     except Exception as e:
         log(f'  GLB export failed: {e}')
+
+    # Clean up temp files
+    for tmp_path in [os.path.join(scan_models_dir, '_cleaned_tmp.ply')]:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
     # Post final model URL to server
     requests.post(
