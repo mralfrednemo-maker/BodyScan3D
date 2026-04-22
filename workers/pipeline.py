@@ -57,7 +57,17 @@ def dispatch(scan_id, state):
         env=env, capture_output=False
     )
     if result.returncode != 0:
-        log(f'Scan {scan_id}: {worker_name} exited {result.returncode}')
+        log(f'Scan {scan_id}: {worker_name} exited {result.returncode} — marking FAILED')
+        try:
+            import requests as _requests
+            _requests.post(
+                f'{API_BASE}/api/internal/scans/{scan_id}/status',
+                headers=internal_headers(),
+                json={'status': 'FAILED'},
+                timeout=10
+            )
+        except Exception:
+            pass  # don't let status-update failure mask the original error
     else:
         log(f'Scan {scan_id}: {worker_name} finished OK')
 

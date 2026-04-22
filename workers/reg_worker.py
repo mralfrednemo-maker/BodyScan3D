@@ -77,16 +77,20 @@ def compute_reg_graph(pycolmap_recon, frames):
     # Determine registration state
     if not connections:
         reg_state = 'FRAGMENTED'
+        connected_fraction = 0.0
     else:
-        # Check if graph is fully connected
+        # Find ALL connected components by BFS-ing from every unvisited node
         visited = set()
-        frontier = [next(iter(connections.keys()))]
-        while frontier:
-            node = frontier.pop()
-            if node in visited:
+        for start in list(connections.keys()):
+            if start in visited:
                 continue
-            visited.add(node)
-            frontier.extend(connections.get(node, []))
+            frontier = [start]
+            while frontier:
+                node = frontier.pop()
+                if node in visited:
+                    continue
+                visited.add(node)
+                frontier.extend(connections.get(node, []))
 
         connected_fraction = len(visited) / len(frame_ids_in_recon) if frame_ids_in_recon else 0
         if connected_fraction >= 0.9:

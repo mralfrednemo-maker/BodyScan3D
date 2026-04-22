@@ -331,76 +331,78 @@ def render_views(mesh_path, camera_poses, output_dir, viewport=(640, 480)):
         # Detect if camera_poses come from pycolmap (dict with rotation_xyzw) or are canonical tuples
         use_colmap_poses = camera_poses and isinstance(camera_poses[0], dict) if camera_poses else False
 
-        if use_colmap_poses:
-            # Render from actual captured camera poses
-            for i, pose_data in enumerate(camera_poses):
-                try:
-                    pose_matrix = build_camera_pose_matrix(
-                        pose_data['rotation_xyzw'],
-                        pose_data['translation']
-                    )
-                    # Adjust for mesh centering
-                    pose_matrix[:3, 3] = pose_matrix[:3, 3] - centroid
+        try:
+            if use_colmap_poses:
+                # Render from actual captured camera poses
+                for i, pose_data in enumerate(camera_poses):
+                    try:
+                        pose_matrix = build_camera_pose_matrix(
+                            pose_data['rotation_xyzw'],
+                            pose_data['translation']
+                        )
+                        # Adjust for mesh centering
+                        pose_matrix[:3, 3] = pose_matrix[:3, 3] - centroid
 
-                    # Create fresh scene for each render
-                    rscene = pyrender.Scene()
-                    rscene.add(py_mesh)
-                    cam = pyrender.PerspectiveCamera(yfov=np.pi / 4)
-                    rscene.add(cam, pose=pose_matrix)
+                        # Create fresh scene for each render
+                        rscene = pyrender.Scene()
+                        rscene.add(py_mesh)
+                        cam = pyrender.PerspectiveCamera(yfov=np.pi / 4)
+                        rscene.add(cam, pose=pose_matrix)
 
-                    color, depth = r.render(rscene)
+                        color, depth = r.render(rscene)
 
-                    # Save view
-                    img = Image.fromarray(color)
-                    view_filename = f'view_{i:03d}.png'
-                    img.save(os.path.join(output_dir, view_filename))
-                    saved_views.append(view_filename)
-                    manifest_entries.append({
-                        'file': view_filename,
-                        'source': 'colmap',
-                        'name': pose_data.get('name', f'pose_{i}'),
-                        'camera_id': pose_data.get('camera_id'),
-                    })
-                    log(f'    Rendered view {i}: {pose_data.get("name", "unknown")}')
-                except Exception as e:
-                    log(f'    Failed to render view {i}: {e}')
-        else:
-            # Render from canonical spherical poses
-            if not camera_poses:
-                camera_poses = canonical_view_poses(8)
+                        # Save view
+                        img = Image.fromarray(color)
+                        view_filename = f'view_{i:03d}.png'
+                        img.save(os.path.join(output_dir, view_filename))
+                        saved_views.append(view_filename)
+                        manifest_entries.append({
+                            'file': view_filename,
+                            'source': 'colmap',
+                            'name': pose_data.get('name', f'pose_{i}'),
+                            'camera_id': pose_data.get('camera_id'),
+                        })
+                        log(f'    Rendered view {i}: {pose_data.get("name", "unknown")}')
+                    except Exception as e:
+                        log(f'    Failed to render view {i}: {e}')
+            else:
+                # Render from canonical spherical poses
+                if not camera_poses:
+                    camera_poses = canonical_view_poses(8)
 
-            for i, pose_spec in enumerate(camera_poses):
-                try:
-                    if isinstance(pose_spec, tuple) and len(pose_spec) == 3:
-                        azimuth, elevation, distance = pose_spec
-                        pose_matrix = view_pose_from_spherical(azimuth, elevation, distance)
-                    else:
-                        continue
+                for i, pose_spec in enumerate(camera_poses):
+                    try:
+                        if isinstance(pose_spec, tuple) and len(pose_spec) == 3:
+                            azimuth, elevation, distance = pose_spec
+                            pose_matrix = view_pose_from_spherical(azimuth, elevation, distance)
+                        else:
+                            continue
 
-                    # Create fresh scene for each render
-                    rscene = pyrender.Scene()
-                    rscene.add(py_mesh)
-                    cam = pyrender.PerspectiveCamera(yfov=np.pi / 4)
-                    rscene.add(cam, pose=pose_matrix)
+                        # Create fresh scene for each render
+                        rscene = pyrender.Scene()
+                        rscene.add(py_mesh)
+                        cam = pyrender.PerspectiveCamera(yfov=np.pi / 4)
+                        rscene.add(cam, pose=pose_matrix)
 
-                    color, depth = r.render(rscene)
+                        color, depth = r.render(rscene)
 
-                    img = Image.fromarray(color)
-                    view_filename = f'view_{i:03d}.png'
-                    img.save(os.path.join(output_dir, view_filename))
-                    saved_views.append(view_filename)
-                    manifest_entries.append({
-                        'file': view_filename,
-                        'source': 'canonical',
-                        'azimuth_deg': pose_spec[0] if isinstance(pose_spec, tuple) else None,
-                        'elevation_deg': pose_spec[1] if isinstance(pose_spec, tuple) else None,
-                        'distance': pose_spec[2] if isinstance(pose_spec, tuple) else None,
-                    })
-                    log(f'    Rendered canonical view {i}: az={pose_spec[0]}, el={pose_spec[1]}')
-                except Exception as e:
-                    log(f'    Failed to render canonical view {i}: {e}')
-
-        r.delete()
+                        img = Image.fromarray(color)
+                        view_filename = f'view_{i:03d}.png'
+                        img.save(os.path.join(output_dir, view_filename))
+                        saved_views.append(view_filename)
+                        manifest_entries.append({
+                            'file': view_filename,
+                            'source': 'canonical',
+                            'azimuth_deg': pose_spec[0] if isinstance(pose_spec, tuple) else None,
+                            'elevation_deg': pose_spec[1] if isinstance(pose_spec, tuple) else None,
+                            'distance': pose_spec[2] if isinstance(pose_spec, tuple) else None,
+                        })
+                        log(f'    Rendered canonical view {i}: az={pose_spec[0]}, el={pose_spec[1]}')
+                    except Exception as e:
+                        log(f'    Failed to render canonical view {i}: {e}')
+        finally:
+            # ALWAYS release GPU memory, even on exception
+            r.delete()
 
         # Write manifest
         manifest = {

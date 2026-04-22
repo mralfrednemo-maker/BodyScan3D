@@ -115,7 +115,17 @@ def run_dense_mvs(sparse_recon_dir, image_dir, workdir):
         'docker', 'run', '--rm', '--gpus', 'all',
         '-v', f'{workdir}:/work',
         '-v', f'{image_dir}:/images:ro',
-        '--user', f'{os.getuid()}:{os.getgid()}',
+    ]
+    # --user flag is Unix-only (os.getuid/getgid don't exist on Windows).
+    # Docker Desktop on Windows handles UID mapping automatically.
+    import platform
+    if platform.system() != 'Windows':
+        try:
+            cmd.append('--user')
+            cmd.append(f'{os.getuid()}:{os.getgid()}')
+        except AttributeError:
+            pass  # fallback: container runs as root (Docker Desktop handles it)
+    cmd += [
         'colmap/colmap:latest',
         'bash', '-c',
         (

@@ -52,9 +52,6 @@ SIAT_OUTPUT_VERSION = '1.0.0'
 # Per-pixel boundary confidence: pixels within EDGE_BAND_PX of mask boundary get
 # lower confidence; 0 = edge, 255 = deep interior
 EDGE_BAND_PX = 8
-# Ambiguity confidence threshold: frames with < this fraction of high-confidence
-# pixels are tagged as ambiguous
-AMBIGUITY_THRESHOLD = 0.65
 
 
 def log(msg):
@@ -499,8 +496,8 @@ def run(scan_id):
         json={
             'output_version': SIAT_OUTPUT_VERSION,
             **paths_for_server,
-            'ambiguity_tags': json.loads(open(out_paths['_ambiguity_tags']).read()),
-            'occlusion_labels': json.loads(open(out_paths['_occlusion_labels']).read()),
+            'ambiguity_tags': json.loads(Path(out_paths['_ambiguity_tags']).read_text()),
+            'occlusion_labels': json.loads(Path(out_paths['_occlusion_labels']).read_text()),
             'primary_tier_count': len(primary_tier),
             'candidate_tier_count': len(candidate_tier),
         },
