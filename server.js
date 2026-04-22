@@ -360,6 +360,8 @@ db.exec(`
   "ALTER TABLE geometry_outputs ADD COLUMN model_uv_url TEXT",
   // R-OUT-2: UV mesh URL in publish manifest
   "ALTER TABLE publish_manifests ADD COLUMN model_uv_url TEXT",
+  // R-OUT-3: Deformable geometric proxy URL
+  "ALTER TABLE geometry_outputs ADD COLUMN model_deform_url TEXT",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // ---------------------------------------------------------------------------
@@ -1554,7 +1556,7 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
     output_version, fragment_set_json, hole_boundary_json,
     usefulness_zones_json, severe_geometry_concern,
     structural_proxy_path, appearance_scaffold_path,
-    model_uv_url
+    model_uv_url, model_deform_url
   } = req.body;
 
   if (!fragment_set_json || !hole_boundary_json || !usefulness_zones_json)
@@ -1564,8 +1566,8 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
     INSERT INTO geometry_outputs
       (scan_id, output_version, fragment_set_json, hole_boundary_json,
        usefulness_zones_json, severe_geometry_concern,
-       structural_proxy_path, appearance_scaffold_path, model_uv_url)
-    VALUES (?,?,?,?,?,?,?,?,?)`);
+       structural_proxy_path, appearance_scaffold_path, model_uv_url, model_deform_url)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`);
 
   const result = insert.run(
     scanId,
@@ -1576,7 +1578,8 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
     severe_geometry_concern != null ? (severe_geometry_concern ? 1 : 0) : 0,
     structural_proxy_path || null,
     appearance_scaffold_path || null,
-    model_uv_url || null
+    model_uv_url || null,
+    model_deform_url || null
   );
 
   // Record lineage: parent = REG output

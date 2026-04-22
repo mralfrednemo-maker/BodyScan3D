@@ -327,6 +327,142 @@ def run(scan_id):
         log(f'  UV parameterization failed (non-fatal): {_e}')
         uv_model_url = None
 
+    # ── R-OUT-3: Deformable geometric proxy ──────────────────────────────────
+    # Computes edit handles: vertex indices + displacement vectors for each
+    # named deformation. Saves model_deform.glb (same mesh) + model_deform.json.
+    deform_url = None
+    try:
+        import pymeshlab as _pml2
+
+        dms = _pml2.MeshSet()
+        dms.load_new_mesh(final_glb)
+        dmesh = dms.current_mesh()
+        vcount = dmesh.vertex_number()
+        fcount = dmesh.face_number()
+        log(f'  Deformable proxy: {vcount} vertices, {fcount} faces')
+
+        # Pull vertex coordinates
+        vmat = dmesh.vertex_matrix()   # numpy (V, 3)
+
+        # Compute mesh bounding box and centroid
+        bb_min = vmat.min(axis=0)
+        bb_max = vmat.max(axis=0)
+        centroid = vmat.mean(axis=0)
+        span = bb_max - bb_min
+        span[span == 0] = 1.0  # avoid div-by-zero
+
+        # Helper: normalise a vector column-wise
+        def _norm(x):
+            return np.linalg.norm(x, axis=1, keepdims=True)
+
+        # Helper: get indices of vertices within an axis-aligned box (fractional)
+        def _box_indices(lo_frac, hi_frac):
+            lo = bb_min + lo_frac * span
+            hi = bb_min + hi_frac * span
+            mask = ((vmat >= lo) & (vmat <= hi)).all(axis=1)
+            return np.where(mask)[0].tolist()
+
+        edits = {}
+
+        # Edit 1 — shoulder_width: symmetric lateral expansion of shoulder-region vertices
+        # Shoulder band: upper 25–45 % of height, full lateral spread
+        shoulder_lo = [0.0, 0.60, 0.40]   # x_frac, y_frac (height), z_frac
+        shoulder_hi = [1.0, 0.90, 0.60]
+        shoulder_idx = _box_indices(
+            np.array([0.0, 0.60, 0.40]),
+            np.array([1.0, 0.90, 0.60])
+        )
+        # Displacement: push outward in X (left/right) proportionally to |x|
+        shoulder_disp = []
+        for idx in shoulder_idx:
+            v = vmat[idx]
+            sign = 1 if v[0] >= centroid[0] else -1
+            # displacement proportional to lateral offset from centre, max ~2 % of span
+            disp = [sign * span[0] * 0.02, 0.0, 0.0]
+            shoulder_disp.append(disp)
+        edits['shoulder_width'] = {
+            'vertex_indices': shoulder_idx,
+            'displacements': shoulder_disp
+        }
+        log(f'  Deform: shoulder_width — {len(shoulder_idx)} vertices')
+
+        # Edit 2 — torso_height: symmetric vertical expansion of torso-region vertices
+        # Torso band: middle 30–65 % of height
+        torso_idx = _box_indices(
+            np.array([0.15, 0.30, 0.15]),
+            np.array([0.85, 0.70, 0.85])
+        )
+        torso_disp = []
+        for idx in torso_idx:
+            # Push upward slightly
+            torso_disp.append([0.0, span[1] * 0.03, 0.0])
+        edits['torso_height'] = {
+            'vertex_indices': torso_idx,
+            'displacements': torso_disp
+        }
+        log(f'  Deform: torso_height — {len(torso_idx)} vertices')
+
+        # Edit 3 — arm_raise_left / arm_raise_right: lateral vertices raised in Y
+        # Left arm: x < centroid[0] - 0.15 * span[0], mid height
+        arm_left_idx = _box_indices(
+            np.array([0.0, 0.25, 0.20]),
+            np.array([0.30, 0.65, 0.80])
+        )
+        arm_right_idx = _box_indices(
+            np.array([0.70, 0.25, 0.20]),
+            np.array([1.0, 0.65, 0.80])
+        )
+        arm_left_disp = []
+        for idx in arm_left_idx:
+            arm_left_disp.append([0.0, span[1] * 0.05, 0.0])
+        arm_right_disp = []
+        for idx in arm_right_idx:
+            arm_right_disp.append([0.0, span[1] * 0.05, 0.0])
+        edits['arm_raise_left'] = {
+            'vertex_indices': arm_left_idx,
+            'displacements': arm_left_disp
+        }
+        edits['arm_raise_right'] = {
+            'vertex_indices': arm_right_idx,
+            'displacements': arm_right_disp
+        }
+        log(f'  Deform: arm_raise_left — {len(arm_left_idx)} vertices, arm_raise_right — {len(arm_right_idx)} vertices')
+
+        # Edit 4 — chest_depth: front-facing chest region pushed forward (Z)
+        chest_idx = _box_indices(
+            np.array([0.25, 0.45, 0.60]),
+            np.array([0.75, 0.75, 1.00])
+        )
+        chest_disp = []
+        for idx in chest_idx:
+            chest_disp.append([0.0, 0.0, span[2] * 0.03])
+        edits['chest_depth'] = {
+            'vertex_indices': chest_idx,
+            'displacements': chest_disp
+        }
+        log(f'  Deform: chest_depth — {len(chest_idx)} vertices')
+
+        # Save model_deform.json
+        deform_json_path = os.path.join(scan_models_dir, 'model_deform.json')
+        with open(deform_json_path, 'w') as f:
+            json.dump(edits, f, indent=2)
+        log(f'  Deform JSON saved: {deform_json_path}')
+
+        # Save model_deform.glb — same mesh geometry as model.glb
+        deform_glb_path = os.path.join(scan_models_dir, 'model_deform.glb')
+        # pymeshlab can't write GLB directly — use trimesh as passthrough
+        dms.save_current_mesh(deform_glb_path.replace('.glb', '_tmp.ply'))
+        deform_tmp = trimesh.load(deform_glb_path.replace('.glb', '_tmp.ply'))
+        deform_tmp.export(deform_glb_path)
+        os.remove(deform_glb_path.replace('.glb', '_tmp.ply'))
+        log(f'  Deform GLB saved: {deform_glb_path}')
+
+        deform_url = f'/uploads/models/{scan_id}/model_deform.glb'
+
+    except Exception as _e:
+        log(f'  Deformable proxy generation failed (non-fatal): {_e}')
+        deform_url = None
+
     # Post final model URL to server
     requests.post(
         f'{API_BASE}/api/internal/scans/{scan_id}/final-model',
@@ -349,6 +485,7 @@ def run(scan_id):
                 'structural_proxy_path': structural_proxy_url,
                 'appearance_scaffold_path': appearance_scaffold_url,
                 'model_uv_url': uv_model_url,
+                'model_deform_url': deform_url,
             },
             timeout=30
         )
