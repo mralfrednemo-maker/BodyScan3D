@@ -14,9 +14,10 @@
 ### Step 2: Gap analysis (MANDATORY before any new work)
 1. Read `docs/bodyscan-dod-outcomes.txt` — the DoD spec
 2. Use the **solutions-architect** agent for gap analysis (Agent tool, subagent_type: solutions-architect). Give it the DoD path and ask for a structured gap list prioritized by severity.
-3. Use the **superpowers:code-reviewer** agent after any code change (superpowers:requesting-code-review skill).
-4. Use **codex:rescue** for deep root-cause investigation of failures (Agent tool, subagent_type: codex:codex-rescue).
-5. Update `PROGRESS.md` with findings before writing any code.
+3. **Run solutions-architect TWICE** with different angles: first pass on requirements coverage, second pass on implementation correctness (API usage, edge cases, error handling).
+4. Use the **superpowers:code-reviewer** agent after any code change (superpowers:requesting-code-review skill).
+5. Use **codex:rescue** for deep root-cause investigation of failures (Agent tool, subagent_type: codex:codex-rescue).
+6. Update `PROGRESS.md` with findings before writing any code.
 
 ### Step 3: Work tracking
 After each significant action, update `PROGRESS.md`.
