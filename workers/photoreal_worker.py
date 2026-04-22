@@ -133,9 +133,6 @@ def compute_lineage_fingerprint(scan_id):
             json.dumps({'missing': sorted(missing_sources)}, sort_keys=True).encode()
         ).hexdigest())
 
-    if not hashes:
-        return hashlib.sha256(b'empty_lineage').hexdigest()
-
     # Fold all hashes into a single fingerprint
     combined = '|'.join(sorted(hashes))
     return hashlib.sha256(combined.encode()).hexdigest()

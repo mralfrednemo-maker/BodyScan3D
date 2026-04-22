@@ -5,3 +5,4 @@ data.db-shm
 uploads/
 *.log
 .env
+workers/sam2/checkpoints/

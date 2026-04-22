@@ -1,0 +1,29 @@
+# Pending Action — Run Pipeline to COMPLETED
+
+## What to do next (same session or after compaction)
+
+**Option A — Run full pipeline (proper):**
+```bash
+cd C:/Users/chris/PROJECTS/bodyscan3d/workers
+python pipeline.py 16
+```
+This runs REG→DG→PHOTOREAL→EDSIM→OQSP→PUBLISH and sets scan 16 status to COMPLETED. The 3D viewer at http://localhost:5001/#/scan/16 will then display the model with measurements.
+
+**Option B — Quick test (set COMPLETED manually):**
+```python
+import sqlite3
+conn = sqlite3.connect('C:/Users/chris/PROJECTS/bodyscan3d/data.db')
+conn.execute("UPDATE scans SET status='COMPLETED' WHERE id=16")
+conn.commit()
+```
+
+## Current state
+- Scan 16: REG status, 30 frames captured, model files exist in uploads/models/16/
+- 3D viewer works but shows "not ready" because status != COMPLETED
+- SAM2: real masks working (3 soft masks, 5215-pixel rigid core)
+- Pipeline files: all workers updated and committed
+
+## Key files
+- Model: C:/Users/chris/PROJECTS/bodyscan3d/uploads/models/16/model.glb
+- Viewer: http://localhost:5001/#/scan/16
+- Ngrok: https://dorsolateral-castiel-unremonstrant.ngrok-free.dev/

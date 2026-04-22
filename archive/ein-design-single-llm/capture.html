@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>BodyScan 3D — Capture</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+#video-wrap{position:relative;flex:1;overflow:hidden;background:#000}
+video{width:100%;height:100%;object-fit:cover;display:block}
+#overlay{position:absolute;inset:0;pointer-events:none}
+#guide-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70vmin;height:70vmin;border-radius:50%;border:2px solid rgba(255,255,255,0.4);transition:border-color 0.3s}
+#guide-ring.stable{border-color:#14b8a6;box-shadow:0 0 0 4px rgba(20,184,166,0.3)}
+#guide-ring.capturing{border-color:#f59e0b;animation:pulse 0.5s ease infinite alternate}
+@keyframes pulse{from{box-shadow:0 0 0 2px rgba(245,158,11,0.3)}to{box-shadow:0 0 0 10px rgba(245,158,11,0.1)}}
+#hint{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);border-radius:20px;padding:8px 18px;font-size:14px;white-space:nowrap;text-align:center;backdrop-filter:blur(8px)}
+#counter{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-size:48px;font-weight:700;color:#14b8a6;text-shadow:0 2px 8px rgba(0,0,0,0.6)}
+#bottom-bar{background:#111;padding:16px;display:flex;flex-direction:column;gap:10px}
+#progress-wrap{height:4px;background:#222;border-radius:2px;overflow:hidden}
+#progress{height:100%;width:0;background:linear-gradient(90deg,#14b8a6,#06b6d4);transition:width 0.3s;border-radius:2px}
+#btn-row{display:flex;gap:10px}
+#btn-start{flex:1;padding:14px;border:none;border-radius:12px;background:#14b8a6;color:#fff;font-size:16px;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+#btn-start:disabled{opacity:0.4;cursor:default}
+#btn-done{padding:14px 20px;border:none;border-radius:12px;background:#1e293b;color:#94a3b8;font-size:16px;font-weight:600;cursor:pointer;display:none}
+#btn-done.active{background:#0f172a;color:#14b8a6;display:block}
+#status-msg{font-size:13px;color:#94a3b8;text-align:center}
+#error-screen{display:none;position:absolute;inset:0;background:#0a0a0a;justify-content:center;align-items:center;flex-direction:column;gap:16px;padding:24px;text-align:center;z-index:10}
+#error-screen.show{display:flex}
+.err-title{font-size:20px;font-weight:600;color:#f87171}
+.err-msg{font-size:14px;color:#94a3b8;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="video-wrap">
+  <video id="vid" autoplay playsinline muted></video>
+  <div id="overlay">
+    <div id="guide-ring"></div>
+    <div id="hint">Loading...</div>
+    <div id="counter" style="display:none"></div>
+  </div>
+  <div id="error-screen">
+    <div class="err-title">Camera Error</div>
+    <div class="err-msg" id="err-detail"></div>
+    <button onclick="location.reload()" style="padding:12px 24px;background:#14b8a6;border:none;border-radius:10px;color:#fff;font-size:15px;cursor:pointer">Retry</button>
+  </div>
+</div>
+<div id="bottom-bar">
+  <div id="progress-wrap"><div id="progress"></div></div>
+  <div id="btn-row">
+    <button id="btn-start" disabled>Start Capture</button>
+    <button id="btn-done">Done</button>
+  </div>
+  <div id="status-msg">Initializing camera...</div>
+</div>
+
+<canvas id="snap" style="display:none"></canvas>
+
+<script>
+const TARGET_FRAMES = 40;
+const UPLOAD_BATCH = 5;
+const MIN_STABLE_MS = 800;
+const MOTION_THRESHOLD = 12;
+
+const params = new URLSearchParams(location.search);
+const TOKEN = params.get('token');
+const SCAN_ID = params.get('scan');
+const BODY_PART = params.get('part') || 'body part';
+
+let stream, captureInterval, frames = [], uploading = false, capturing = false, done = false;
+let lastFrameData = null, stableStart = null;
+
+const vid = document.getElementById('vid');
+const ring = document.getElementById('guide-ring');
+const hint = document.getElementById('hint');
+const counter = document.getElementById('counter');
+const progress = document.getElementById('progress');
+const btnStart = document.getElementById('btn-start');
+const btnDone = document.getElementById('btn-done');
+const statusMsg = document.getElementById('status-msg');
+const snap = document.getElementById('snap');
+const ctx = snap.getContext('2d');
+
+function showError(msg) {
+  document.getElementById('err-detail').textContent = msg;
+  document.getElementById('error-screen').classList.add('show');
+}
+
+async function init() {
+  if (!TOKEN || !SCAN_ID) { showError('Missing capture link parameters. Please scan the QR code again.'); return; }
+
+  try {
+    const r = await fetch(`/api/capture/validate?token=${TOKEN}`);
+    if (!r.ok) { showError('Invalid or expired capture link.'); return; }
+    const info = await r.json();
+    hint.textContent = `Hold phone 40–60 cm from ${BODY_PART}`;
+  } catch(e) { showError('Cannot reach server. Check WiFi.'); return; }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    vid.srcObject = stream;
+    await vid.play();
+    btnStart.disabled = false;
+    statusMsg.textContent = `Aim at ${BODY_PART} and press Start`;
+    hint.textContent = `Aim at ${BODY_PART}`;
+    startMotionMonitor();
+  } catch(e) {
+    showError('Camera access denied. Please allow camera permission and refresh.');
+  }
+}
+
+function grabFrame() {
+  const track = stream.getVideoTracks()[0];
+  const settings = track.getSettings();
+  snap.width = settings.width || 1280;
+  snap.height = settings.height || 720;
+  ctx.drawImage(vid, 0, 0, snap.width, snap.height);
+  return new Promise(resolve => snap.toBlob(resolve, 'image/jpeg', 0.88));
+}
+
+function motionScore(prev, curr) {
+  if (!prev) return 999;
+  let diff = 0;
+  const step = 4;
+  for (let i = 0; i < curr.data.length; i += step * 4) {
+    diff += Math.abs(curr.data[i] - prev.data[i]);
+    diff += Math.abs(curr.data[i+1] - prev.data[i+1]);
+    diff += Math.abs(curr.data[i+2] - prev.data[i+2]);
+  }
+  return diff / (curr.data.length / (step * 4));
+}
+
+function startMotionMonitor() {
+  const thumbW = 80, thumbH = 45;
+  const thumbCanvas = document.createElement('canvas');
+  thumbCanvas.width = thumbW; thumbCanvas.height = thumbH;
+  const thumbCtx = thumbCanvas.getContext('2d');
+
+  setInterval(() => {
+    if (done) return;
+    thumbCtx.drawImage(vid, 0, 0, thumbW, thumbH);
+    const curr = thumbCtx.getImageData(0, 0, thumbW, thumbH);
+    const score = motionScore(lastFrameData, curr);
+    lastFrameData = curr;
+
+    const stable = score < MOTION_THRESHOLD;
+    if (!capturing) {
+      if (stable) {
+        if (!stableStart) stableStart = Date.now();
+        else if (Date.now() - stableStart > MIN_STABLE_MS) {
+          ring.classList.add('stable');
+          hint.textContent = 'Hold steady — orbiting works best';
+        }
+      } else {
+        stableStart = null;
+        ring.classList.remove('stable');
+        if (frames.length === 0) hint.textContent = 'Move slowly around the subject';
+      }
+    }
+  }, 200);
+}
+
+async function uploadBatch(blobs) {
+  if (blobs.length === 0) return;
+  const fd = new FormData();
+  fd.append('token', TOKEN);
+  blobs.forEach((b, i) => fd.append('frames', b, `frame_${Date.now()}_${i}.jpg`));
+  // Pass token as query param so multer destination can read it before body is parsed
+  const r = await fetch(`/api/capture/frames?token=${encodeURIComponent(TOKEN)}`, { method: 'POST', body: fd });
+  if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+  return r.json();
+}
+
+btnStart.addEventListener('click', async () => {
+  if (capturing) return;
+  capturing = true;
+  btnStart.disabled = true;
+  ring.classList.add('capturing');
+  counter.style.display = 'block';
+  hint.textContent = 'Slowly orbit around the subject';
+  statusMsg.textContent = 'Capturing frames...';
+
+  let pendingBlobs = [];
+
+  captureInterval = setInterval(async () => {
+    if (frames.length >= TARGET_FRAMES || done) {
+      clearInterval(captureInterval);
+      await finishCapture();
+      return;
+    }
+
+    try {
+      const blob = await grabFrame();
+      frames.push(blob);
+      pendingBlobs.push(blob);
+      counter.textContent = frames.length;
+      progress.style.width = `${(frames.length / TARGET_FRAMES) * 100}%`;
+      statusMsg.textContent = `${frames.length} / ${TARGET_FRAMES} frames`;
+
+      if (pendingBlobs.length >= UPLOAD_BATCH) {
+        const batch = pendingBlobs.splice(0);
+        uploadBatch(batch).catch(e => console.error('Upload error:', e));
+      }
+    } catch(e) { console.error('Capture error:', e); }
+  }, 500);
+
+  btnDone.classList.add('active');
+});
+
+btnDone.addEventListener('click', async () => {
+  if (done) return;
+  clearInterval(captureInterval);
+  await finishCapture();
+});
+
+async function finishCapture() {
+  if (done) return;
+  done = true;
+  ring.classList.remove('capturing', 'stable');
+  counter.style.display = 'none';
+  statusMsg.textContent = 'Uploading remaining frames...';
+  btnDone.disabled = true;
+
+  // Final batch
+  if (frames.length > 0) {
+    const lastBatch = frames.slice(-((frames.length % UPLOAD_BATCH) || UPLOAD_BATCH));
+    try { await uploadBatch(lastBatch); } catch(e) { console.error(e); }
+  }
+
+  statusMsg.textContent = 'Finalizing...';
+  try {
+    const r = await fetch('/api/capture/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      statusMsg.textContent = `Done! ${data.frameCount} frames captured.`;
+      hint.textContent = 'Go back to the web app to select the target area';
+      progress.style.width = '100%';
+      setTimeout(() => {
+        location.href = data.promptUrl;
+      }, 1500);
+    } else {
+      statusMsg.textContent = 'Error completing capture. Try again.';
+    }
+  } catch(e) {
+    statusMsg.textContent = 'Network error. Check WiFi and retry.';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

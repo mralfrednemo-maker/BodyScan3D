@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>BodyScan 3D — Select Target</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100dvh;display:flex;flex-direction:column;overflow-x:hidden}
+#header{padding:16px;background:#111;border-bottom:1px solid #1e293b}
+#header h1{font-size:16px;font-weight:600;color:#fff}
+#header p{font-size:13px;color:#94a3b8;margin-top:2px}
+#canvas-wrap{flex:1;position:relative;display:flex;justify-content:center;align-items:flex-start;padding:16px;overflow:hidden}
+#canvas-wrap canvas{border-radius:8px;cursor:crosshair;max-width:100%;touch-action:none}
+#controls{padding:16px;background:#111;border-top:1px solid #1e293b;display:flex;flex-direction:column;gap:12px}
+#mode-row{display:flex;gap:8px}
+.mode-btn{flex:1;padding:10px 6px;border:1.5px solid #1e293b;border-radius:10px;background:transparent;color:#94a3b8;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;text-align:center}
+.mode-btn.active{border-color:#14b8a6;background:#0d3330;color:#14b8a6}
+.mode-btn.positive.active{border-color:#22c55e;background:#052e16;color:#22c55e}
+.mode-btn.negative.active{border-color:#ef4444;background:#2d0a0a;color:#ef4444}
+#submit-btn{width:100%;padding:15px;border:none;border-radius:12px;background:#14b8a6;color:#fff;font-size:16px;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+#submit-btn:disabled{opacity:0.4;cursor:default}
+#reset-btn{width:100%;padding:10px;border:1.5px solid #1e293b;border-radius:10px;background:transparent;color:#64748b;font-size:13px;cursor:pointer}
+#status{font-size:13px;color:#94a3b8;text-align:center;min-height:18px}
+#loading{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;flex-direction:column;gap:16px;z-index:100}
+#loading.show{display:flex}
+.spinner{width:48px;height:48px;border:4px solid #1e293b;border-top-color:#14b8a6;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.processing-steps{display:flex;flex-direction:column;gap:8px;max-width:280px;width:100%}
+.step{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#111;border-radius:8px;border:1px solid #1e293b;font-size:13px;color:#64748b;transition:all 0.3s}
+.step.active{border-color:#14b8a6;color:#14b8a6;background:#0d3330}
+.step.done{border-color:#22c55e;color:#22c55e;background:#052e16}
+.step.failed{border-color:#ef4444;color:#ef4444;background:#2d0a0a}
+.step-icon{font-size:16px;width:20px;text-align:center}
+#success-screen{display:none;position:fixed;inset:0;background:#0a0a0a;justify-content:center;align-items:center;flex-direction:column;gap:20px;z-index:100;padding:24px;text-align:center}
+#success-screen.show{display:flex}
+.success-icon{font-size:64px}
+.success-title{font-size:22px;font-weight:700;color:#22c55e}
+.success-msg{font-size:14px;color:#94a3b8;line-height:1.6;max-width:300px}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>Select Target Area</h1>
+  <p id="subtitle">Draw a box around the area to reconstruct</p>
+</div>
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+<div id="controls">
+  <div id="mode-row">
+    <button class="mode-btn active" id="btn-box" onclick="setMode('box')">Box (required)</button>
+    <button class="mode-btn positive" id="btn-pos" onclick="setMode('positive')">+ Include</button>
+    <button class="mode-btn negative" id="btn-neg" onclick="setMode('negative')">− Exclude</button>
+  </div>
+  <div id="status">Draw a box around the body part</div>
+  <button id="submit-btn" disabled onclick="submitPrompt()">Reconstruct 3D Model</button>
+  <button id="reset-btn" onclick="resetAll()">Clear and start over</button>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="processing-steps" id="steps-list">
+    <div class="step active" id="step-queued"><span class="step-icon">📋</span> Queued for processing</div>
+    <div class="step" id="step-qc"><span class="step-icon">🔍</span> Frame quality check</div>
+    <div class="step" id="step-mask"><span class="step-icon">✂️</span> Segmentation & masking</div>
+    <div class="step" id="step-recon"><span class="step-icon">🔷</span> 3D reconstruction</div>
+    <div class="step" id="step-cleanup"><span class="step-icon">🧹</span> Mesh cleanup</div>
+    <div class="step" id="step-export"><span class="step-icon">📦</span> Exporting GLB</div>
+    <div class="step" id="step-done"><span class="step-icon">✅</span> Done</div>
+  </div>
+</div>
+
+<div id="success-screen">
+  <div class="success-icon">🎉</div>
+  <div class="success-title">3D Model Ready</div>
+  <div class="success-msg">Your scan has been processed. Open the BodyScan 3D web app to view the result.</div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const TOKEN = params.get('token');
+const SCAN_ID = params.get('scan');
+
+let img = null, mode = 'box', box = null, posPoints = [], negPoints = [];
+let drawing = false, startX = 0, startY = 0, imgW = 0, imgH = 0, scale = 1, offsetX = 0, offsetY = 0;
+let keyframeId = null;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const submitBtn = document.getElementById('submit-btn');
+
+const STEP_ORDER = ['queued','qc','mask','recon','cleanup','export','done'];
+const STAGE_MAP = {
+  'queued': 'queued', 'frame_qc': 'qc', 'segmentation': 'mask',
+  'reconstruction': 'recon', 'cleanup': 'cleanup', 'export': 'export',
+  'complete': 'done', 'failed': 'failed'
+};
+
+function setMode(m) {
+  mode = m;
+  ['box','pos','neg'].forEach(k => document.getElementById(`btn-${k}`)?.classList.remove('active'));
+  const map = {box:'btn-box', positive:'btn-pos', negative:'btn-neg'};
+  document.getElementById(map[m])?.classList.add('active');
+  canvas.style.cursor = m === 'box' ? 'crosshair' : 'cell';
+  document.getElementById('status').textContent = m === 'box'
+    ? 'Draw a box around the body part'
+    : m === 'positive' ? 'Click to add "include" points'
+    : 'Click to add "exclude" points';
+}
+
+async function init() {
+  if (!TOKEN || !SCAN_ID) { document.getElementById('subtitle').textContent = 'Invalid link — please scan QR again'; return; }
+
+  try {
+    const r = await fetch(`/api/capture/keyframe?token=${TOKEN}`);
+    if (!r.ok) throw new Error('not found');
+    const data = await r.json();
+    keyframeId = data.keyframeId;
+    document.getElementById('subtitle').textContent = `${data.bodyPart} — ${data.frameCount} frames captured`;
+    await loadImage(data.keyframeUrl);
+  } catch(e) {
+    document.getElementById('subtitle').textContent = 'Error loading keyframe. Refresh to retry.';
+  }
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      img = image;
+      const wrap = document.getElementById('canvas-wrap');
+      const maxW = wrap.clientWidth - 32;
+      const maxH = Math.max(200, window.innerHeight * 0.55);
+      scale = Math.min(maxW / image.width, maxH / image.height, 1);
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      imgW = image.width; imgH = image.height;
+      draw();
+      resolve();
+    };
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  if (box) {
+    ctx.strokeStyle = '#14b8a6';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
+    ctx.strokeRect(box.x1 * scale, box.y1 * scale, (box.x2 - box.x1) * scale, (box.y2 - box.y1) * scale);
+    ctx.fillStyle = 'rgba(20,184,166,0.12)';
+    ctx.fillRect(box.x1 * scale, box.y1 * scale, (box.x2 - box.x1) * scale, (box.y2 - box.y1) * scale);
+  }
+
+  posPoints.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x * scale, p.y * scale, 7, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(34,197,94,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.stroke();
+  });
+
+  negPoints.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x * scale, p.y * scale, 7, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(239,68,68,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.stroke();
+  });
+}
+
+function getXY(e) {
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  return {
+    x: Math.round((touch.clientX - rect.left) / scale),
+    y: Math.round((touch.clientY - rect.top) / scale)
+  };
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(e); }, { passive: false });
+
+function onDown(e) {
+  const { x, y } = getXY(e);
+  if (mode === 'box') {
+    drawing = true; startX = x; startY = y; box = null;
+  } else {
+    const pt = { x, y };
+    if (mode === 'positive') posPoints.push(pt);
+    else negPoints.push(pt);
+    draw();
+    updateSubmit();
+  }
+}
+
+function onMove(e) {
+  if (!drawing || mode !== 'box') return;
+  const { x, y } = getXY(e);
+  box = { x1: Math.min(startX, x), y1: Math.min(startY, y), x2: Math.max(startX, x), y2: Math.max(startY, y) };
+  draw();
+}
+
+function onUp(e) {
+  if (!drawing || mode !== 'box') return;
+  drawing = false;
+  if (box && (box.x2 - box.x1) > 10 && (box.y2 - box.y1) > 10) {
+    document.getElementById('status').textContent = 'Box drawn. Add detail points or reconstruct.';
+    updateSubmit();
+  } else {
+    box = null; draw();
+  }
+}
+
+function updateSubmit() {
+  submitBtn.disabled = !box;
+}
+
+function resetAll() {
+  box = null; posPoints = []; negPoints = [];
+  setMode('box');
+  submitBtn.disabled = true;
+  draw();
+}
+
+async function submitPrompt() {
+  if (!box) return;
+  submitBtn.disabled = true;
+
+  try {
+    const r = await fetch('/api/capture/prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: TOKEN,
+        keyframeId,
+        box,
+        positivePoints: posPoints.length > 0 ? posPoints : undefined,
+        negativePoints: negPoints.length > 0 ? negPoints : undefined
+      })
+    });
+
+    if (!r.ok) throw new Error(`${r.status}`);
+
+    document.getElementById('loading').classList.add('show');
+    pollStatus();
+  } catch(e) {
+    submitBtn.disabled = false;
+    document.getElementById('status').textContent = `Error: ${e.message}. Try again.`;
+  }
+}
+
+function setStepState(stepId, state) {
+  const el = document.getElementById(`step-${stepId}`);
+  if (!el) return;
+  el.className = `step ${state}`;
+}
+
+let currentStepIdx = 0;
+async function pollStatus() {
+  // Use token-based endpoint — phone has no session auth
+  const url = `/api/capture/status?token=${encodeURIComponent(TOKEN)}`;
+  let evtSource;
+  try {
+    evtSource = new EventSource(url);
+  } catch(e) {
+    // SSE not supported — fall back to polling
+    pollFallback();
+    return;
+  }
+
+  evtSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      updateSteps(data);
+      if (data.status === 'Ready') {
+        evtSource.close();
+        showSuccess();
+      } else if (data.status === 'Failed') {
+        evtSource.close();
+        showFailed();
+      }
+    } catch(_) {}
+  };
+  evtSource.onerror = () => { evtSource.close(); pollFallback(); };
+}
+
+async function pollFallback() {
+  let attempts = 0;
+  const check = async () => {
+    try {
+      const r = await fetch(`/api/capture/status/poll?token=${encodeURIComponent(TOKEN)}`);
+      if (r.ok) {
+        const data = await r.json();
+        updateSteps(data);
+        if (data.status === 'Ready') { showSuccess(); return; }
+        if (data.status === 'Failed') { showFailed(); return; }
+      }
+    } catch(_) {}
+    if (attempts++ < 120) setTimeout(check, 5000);
+  };
+  check();
+}
+
+function updateSteps(data) {
+  if (!data.logs || data.logs.length === 0) return;
+  const lastLog = data.logs[0];
+  const stage = STAGE_MAP[lastLog.stage] || lastLog.stage;
+  const stageIdx = STEP_ORDER.indexOf(stage);
+
+  for (let i = 0; i < STEP_ORDER.length; i++) {
+    if (i < stageIdx) setStepState(STEP_ORDER[i], 'done');
+    else if (i === stageIdx) setStepState(STEP_ORDER[i], lastLog.status === 'failed' ? 'failed' : 'active');
+    else setStepState(STEP_ORDER[i], '');
+  }
+}
+
+function showSuccess() {
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('success-screen').classList.add('show');
+}
+
+function showFailed() {
+  document.getElementById('loading').classList.remove('show');
+  document.getElementById('status').textContent = 'Processing failed. Please recapture.';
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Try Again';
+}
+
+init();
+</script>
+</body>
+</html>
