@@ -1,0 +1,726 @@
+  
+
+## 1. Definition of Done framing
+
+This Definition of Done is a **contract-enforcement bar** for a self-hosted, phone-first body-part capture system. The system is done only when it can take ordinary non-expert capture under real clinic/studio conditions and produce a **workflow-alive**, append-only asset family that supports honest viewing, stable placement where authority exists, bounded preview where authority exists, deterministic replay/regeneration, and publishability without overclaiming. A visually impressive but workflow-dead result is not done. Honest partial states are valid when they remain explicit; hidden uncertainty is not.  
+
+## 2. Ground rules inherited from the approved design
+
+The following are binding:
+
+* one accepted capture yields one canonical asset family under stable identity and append-only lineage
+* the closed capability set is fixed: photoreal viewing, surface-anchored placement, deformable preview, provenance/regeneration, metadata/confidence signaling
+* region-level truth beats summaries
+* honest partial publication is allowed; a hidden second processability gate is forbidden
+* patch is repair, never silent rewrite
+* no fake watertightness, fake continuity, fake metric trust, or clinical/diagnostic/predictive implication by default
+* backend complexity must not leak backward onto the operator
+* capture, processing, storage, and serving must be self-hosted on operator-controlled infrastructure.   
+
+## 3. Whole-system Definition of Done
+
+The whole product is done only when all of the following are true:
+
+**Product-level**
+
+* non-expert operators complete a standard body-part capture on first attempt in at least 4/5 sessions after at most 10 minutes of onboarding
+* median active capture time is at most 45 seconds; p95 at most 90 seconds
+* at least 95% of completed captures yield a processed asset without manual rescue under normal conditions
+* end-to-end capture → upload → processing → usable asset completes in at least 95% of attempts on supported devices and infrastructure
+* imperfect captures degrade to flagged-but-usable outputs wherever physically possible instead of hard-failing.  
+
+**Output-contract**
+
+* every accepted session produces, or can deterministically regenerate, the required capability stack
+* cross-output spatial consistency holds on claimed regions
+* reopen/save/re-derive must not silently move tattoos, change preview meaning, or break correspondence
+* machine-readable coverage/confidence/flagged-region outputs must exist and remain consumable downstream.  
+
+**Lineage / privacy / durability**
+
+* stage versions, QC outputs, and publish manifests are never mutated in place
+* there is no runtime dependency on external reconstruction APIs, license servers, or hosted QC services
+* raw and derived artifacts are encrypted at rest and in transit
+* access is role-scoped and audit-logged
+* purge, denial, publish, stale/rebind, and supersession events are recorded in append-only logs
+* telemetry is opt-in, operational, and excludes imagery or identifying payloads. 
+
+## 4. Subsystem DoD — Capture UX and shot-taking
+
+Capture UX is done when capture is calm, silent-by-default, non-gatekeeping, and centered on **processable-enough** capture rather than ideal capture.
+
+**Must exist**
+
+* M1 video sweep as the primary visible mode
+* bounded M2 fallback
+* bounded patch capture offer
+* exactly the approved four review outcomes: usable, usable with flagged regions, worth a short patch, retry recommended
+* downstream-visible review outcome context in mobile provenance.  
+
+**Must be true**
+
+* median zero corrective interventions, p95 at most one soft nudge, hard ceiling three interventions
+* no hidden expertise requirement
+* M1 remains the dominant successful path
+* retry remains rare and reserved for below-floor cases
+* patch is bounded recovery, not a third dominant mode.  
+
+**Non-go**
+
+* intervention inflation
+* retake inflation
+* mode-switch nagging
+* silent hard-gating
+* “surveillance/proctored” feel
+* success achieved mainly by tightening operator choreography. 
+
+## 5. Subsystem DoD — Mobile capture pipeline
+
+Mobile is done when it captures raw media plus synchronized provenance and delivers an integrity-verified session bundle under one immutable `canonical_session_id`.
+
+**Required artifacts**
+
+* session manifest
+* ordered media inventory
+* per-sample metadata streams
+* per-file hashes and bundle-level integrity proof / Merkle agreement
+* resumable upload state
+* backend durable-persistence acknowledgment.  
+
+**Required behaviors**
+
+* no destructive downsampling, beauty filtering, or hidden frame filtering before verified upload
+* interrupted uploads resume cleanly
+* upload state survives backgrounding and recoverable interruption
+* no transient failure loses raw capture data
+* local privacy enforcement is maintained.  
+
+**Non-go**
+
+* plaintext media leakage
+* transcode replacing original media without provable continuity
+* upload requires manual restart
+* external runtime dependency
+* incomplete/corrupt session bundle declared successful.  
+
+## 6. Subsystem DoD — FSCQI
+
+FSCQI is done when it produces an honest, reconstruction-ready observation package without becoming a hidden perfectionist gate.
+
+**Required artifacts**
+
+* curated primary tier
+* extended candidate tier
+* raw reference map
+* dual-level coverage descriptor
+* weak-region register
+* capture-health summary
+* machine-readable provenance
+* `fscqi_bundle_version`
+* explicit four-state processability verdict. 
+
+**Required behaviors**
+
+* unique moderate-quality views can outrank pristine duplicates
+* minor blur, exposure drift, and coverage gaps do not force retry
+* partial captures can pass through as `PROCESS_WITH_FLAGS`
+* downstream sees the weak-region truth instead of a scalar simplification. 
+
+**Non-go**
+
+* scalar utility used as a hidden veto
+* below-perfect capture treated as failure by default
+* weak-region signals dropped before downstream use
+* retry inflation from ordinary handheld messiness. 
+
+## 7. Subsystem DoD — SIAT
+
+SIAT is done when target anatomy is isolated honestly, with retained context margins and ambiguity preserved where evidence is weak.
+
+**Required artifacts**
+
+* `target_alpha_soft`
+* `target_core_mask`
+* `target_mask_hard`
+* `static_rigid_core` / `pose_safe_support_mask`
+* `boundary_confidence_channel`
+* ambiguity tags and occlusion labels. 
+
+**Required behaviors**
+
+* no zero-shot fragility
+* no forced binary certainty under uncertainty
+* retained target-adjacent context sufficient for placement/preview downstream
+* hard exclusion reserved for clear non-target evidence. 
+
+**Non-go**
+
+* crisp boundary without confidence
+* silent target-identity drift
+* aggressive context stripping that starves downstream workflows. 
+
+## 8. Subsystem DoD — REG
+
+REG is done when it yields the strongest honest multi-view registration state available, including partial/fragmented graphs, and establishes a canonical body-part pose frame without hallucinating measurement trust.
+
+**Required artifacts**
+
+* per-observation intrinsics/extrinsics
+* `registration_state`
+* session registration graph
+* `pose_version`
+* scale regime and scale confidence band
+* `metric_trust_allowed`
+* `measurement_validity_claim`
+* `measurement_use_prohibited` where applicable
+* `feature_support_regime ∈ {core_only, core_plus_context, fallback_wide}`.  
+
+**Required behaviors**
+
+* partial connectedness is allowed
+* weak support remains explicit
+* scale posture is honest and machine-readable
+* “close but slightly shifted” is failure, not tolerance.  
+
+**Non-go**
+
+* forcing a single global component from unearned evidence
+* hallucinated scale confidence
+* downstream metric or clinical implication without validated support. 
+
+## 9. Subsystem DoD — DG
+
+DG is done when it produces honest geometry that preserves fragments, open boundaries, usefulness zones, and severe concerns instead of cosmetically closing gaps.
+
+**Required artifacts**
+
+* `geometry_version`
+* `surface_fragment_set`
+* `hole_and_open_boundary_map`
+* `surface_usefulness_zones`
+* structural proxy and appearance scaffold as distinct geometric/appearance responsibilities
+* explicit open-boundary semantics.  
+
+**Required behaviors**
+
+* fragment-preserving output
+* open boundaries remain explicit
+* zero placement-relevant anchor zones triggers `severe_geometry_concern`
+* unsupported gaps are not bridged for cosmetic neatness. 
+
+**Non-go**
+
+* hallucinated skin closure
+* unsupported fragment merging
+* suppressing coherent partial surfaces just because 360° coverage was not achieved. 
+
+## 10. Subsystem DoD — Photoreal view-capable realization
+
+This subsystem is done when it mints a lineage-addressable `view_version` that fulfills the viewing contract for the regions and states it claims.
+
+**Required artifacts**
+
+* view bundle
+* `view_version`
+* pipeline/version fingerprint
+* explicit link to the asset family and lineage tuple
+* either full photoreal route or explicit appearance-only viewing route when that is the highest honest route available. 
+
+**Required behaviors**
+
+* photo-like output on near-capture viewpoints
+* believable skin tone, microtexture, and lighting plausibility
+* outside the supported envelope, degrade with blur/ghosting rather than tears, floaters, inversions, or collapse
+* appearance does not confer edit authority.  
+
+**Non-go**
+
+* beautiful orbit but workflow-dead asset
+* hidden randomness that changes practical output
+* view-only output presented as sufficient for persistent editing
+* material photoreal change hidden under another version axis. 
+
+## 11. Subsystem DoD — EDSIM
+
+EDSIM is done when it converts imperfect upstream substrate into bounded persistent authority where support exists, and explicit guarded / refused / appearance-only / stale states where support does not.
+
+**Required artifacts**
+
+* `anchor_chart_manifest.json`
+* `placement_authority_map.json`
+* `preview_authority_map.json`
+* `appearance_only_routes.json`
+* `edit_region_definitions.json`
+* `placement_state_bundles.jsonl`
+* `preview_edit_state_bundles.jsonl`
+* `placement_on_preview_bindings.jsonl`
+* `stale_rebind_register.json`
+* `before_after_lineage.json`
+* `edit_readiness_summary.json`
+* refusal-zone files
+* decision/admission logs.  
+
+**Required behaviors**
+
+* placement is persistent only on real anchor domains
+* preview persistence exists only for `preview_authoritative` and `preview_guarded`
+* `preview_appearance_only` routes are non-persistent by construction
+* placement and preview bundles are orthogonal and append-only
+* `auto_rebind_identical` only for identical meaning; otherwise `stale_requires_review` or `retired`
+* edit-readiness summary is descriptive only and may not override region-level maps.  
+
+**Non-go**
+
+* edits persisted over unsupported substrate
+* silent relocation or silent parameter mutation
+* appearance-only promoted into persistent authority
+* upstream geometry/pose/isolation truth overwritten by EDSIM.  
+
+## 12. Subsystem DoD — OQSP
+
+OQSP is done when it organizes, validates, fuses, classifies, and publishes without re-adjudicating upstream truth.
+
+**Required artifacts**
+
+* immutable `publish_manifest.json`
+* 8-artifact QC set including asset/QC manifest, capability readiness, severe concern aggregation, and related integrity/conflict surfaces
+* lineage-aware artifact refs
+* `publishability_class`
+* append-only state transition records
+* immutable parent pointers and pipeline fingerprints.   
+
+**Required behaviors**
+
+* durable resumable staged workflow
+* dependency-scoped invalidation after patch, not blind full rerun
+* preserve upstream weakness/refusal/stale signals rather than flattening them
+* layered publishing, not binary publishing
+* no stronger geometry, confidence, edit authority, or metric trust may be invented downstream
+* external publish is forbidden unless an honest view-capable route exists.  
+
+**Non-go**
+
+* flattening refusal/guarded maps into a cleaner headline
+* minting publish from failed-unrecoverable lineage
+* unresolved hash/parent-pointer contradictions
+* QC honesty channels reduced to decorative prose.  
+
+## 13. Cross-cutting Definition of Done
+
+**Stable identity and lineage**
+
+* one canonical capture-origin identity binds 1:1 to one canonical asset-family identity
+* descendants are append-only
+* no version, publish manifest, or QC output is mutated in place.  
+
+**Patch / stale / rebind**
+
+* patch is repair, never silent rewrite
+* identical-only automatic rebind
+* non-identical downstream meaning becomes stale or retired
+* no silent remapping of tattoos or preview semantics.  
+
+**Measurement / scale honesty**
+
+* `metric_trust_allowed` defaults false unless explicitly earned upstream
+* scale regime and measurement posture propagate unchanged
+* no clinical/metrological claim by default.  
+
+**Confidence / flagged-region integrity**
+
+* coverage, confidence, and flagged-region outputs are machine-readable
+* flagged regions propagate across appearance, placement, preview, and publish layers
+* summary classes never override per-region truth.  
+
+**Deterministic regeneration**
+
+* same canonical asset + same compatible derivation context + same parameters = same practical output
+* “close but slightly shifted” is failure
+* pipeline changes mint explicit new descendants.  
+
+**Purge / regeneration truth**
+
+* purge must be explicit, auditable, lineage-safe, and cascade-safe
+* after purge removes required provenance, the asset must no longer present itself as regenerable
+* purge may end capability; it may not create a false claim of replayability/regenerability.   
+
+**Operational telemetry tripwires**
+
+* intervention counters, retry inflation, patch inflation, and M1/M2 ratio must be monitored continuously
+* telemetry must detect backend strictness leaking into operator burden
+* telemetry state must not change capture or upload behavior.  
+
+## 14. Release and publish gates
+
+**Minimum internally valid state**
+
+* verified identity and lineage
+* machine-readable honesty channels intact
+* structural and/or edit-capable substrate may exist even without external publishability
+* partial, guarded, appearance-only, and refusal-bearing states may remain internally valid if truth surfaces are preserved. This majority synthesis explicitly rejects the losing rule that all outputs must be non-empty before internal validity can exist.   
+
+**Minimum externally publishable state**
+
+* an honest view-capable route exists
+* publication preserves machine-readable bounds and flags
+* appearance-only viewing may satisfy the external publish floor when it is the highest honest route
+* structural-only or edit-only states may remain valid internal lineage without external publish.  
+
+**Edit-capable publish floor**
+
+* view-capable floor satisfied
+* at least one honestly supported placement and/or bounded preview region exists
+* region bounds, authority class, and refusal zones remain exposed
+* publication does not imply stronger authority outside those regions.  
+
+**Blocks publishing**
+
+* missing honesty channels
+* lineage corruption / missing parent pointers
+* unresolved cryptographic integrity failures
+* failed-unrecoverable branch attempting to publish
+* no honest view-capable route
+* silent mutation, false metric trust, or uncertainty laundering.  
+
+## 15. Required evidence and verification matrix
+
+The system cannot claim done without evidence for:
+
+* capture usability bars and intervention-frequency telemetry
+* upload resume/persistence/integrity tests
+* processability verdict correctness and weak-region propagation tests
+* SIAT ambiguity-preservation and occlusion-tag tests
+* REG partial-graph and scale-honesty tests
+* DG fragment-preservation and open-boundary honesty tests
+* photo-like viewing tests on near-trajectory viewpoints
+* placement replay tests
+* preview replay tests
+* cross-output consistency checks
+* patch regression checks
+* stale/rebind behavior checks
+* lineage integrity checks across `fscqi_bundle_version`, `isolation_version`, `pose_version`, `geometry_version`, `view_version`, and `edit_sim_version`
+* publish-manifest and QC artifact presence/integrity checks
+* purge/regeneration truth tests
+* telemetry tripwire regression tests for calm capture.    
+
+## 16. Release-blocking non-go conditions
+
+Release is blocked by any of the following:
+
+* gatekeeping capture
+* photo-mode creep
+* fragile video pipeline
+* workflow-dead outputs
+* self-hosting in name only
+* silent overclaiming
+* capture-side shifting of backend responsibility
+* asset identity drift
+* hidden expertise gate
+* ideal-conditions-only success
+* external publish without honest view-capable route
+* false watertightness, false continuity, or false metric trust
+* persistence of edits over unsupported substrate
+* publish from failed-unrecoverable lineage
+* purge that leaves a false regeneration claim intact.  
+
+## 17. Residual implementation risks that are NOT design gaps
+
+These remain real risks even if the DoD is implemented correctly:
+
+* whether short handheld RGB capture is sufficient often enough across the target body-part set
+* whether photoreal view, stable anchoring, and bounded preview can stay in visually-undetectable lockstep on weakly featured skin
+* whether identical-only stale/rebind policy creates too much review friction
+* whether preview remains photo-like near weak/open boundaries often enough to stay product-useful
+* whether confidence and weak-region foresight are calibrated usefully without becoming over-conservative
+* whether self-hosted minutes-not-hours latency remains feasible on difficult sessions and long lineage chains
+* whether telemetry tripwires are sensitive enough to catch capture-regression early without becoming noise.  
+
+**Not clear enough / not feasible to harden further from the current majority record**
+
+* an exact numeric cross-output drift budget
+* any required percentage floor for `PROCESS_CLEAN` or unflagged assets
+* an exact legal retention duration policy
+* exact downstream UI mechanics beyond the obligation to honor machine-readable authority/refusal signals.  
+
+## 18. Final integrated Definition of Done summary
+
+The system is done only when it can honestly turn calm, phone-first capture into one canonical, append-only, self-hosted asset family that is **workflow-alive**: view-capable, placement-capable where authority exists, preview-capable where authority exists, replayable, regenerable while provenance exists, privacy-safe, and publishable only within explicit authority/refusal/guarded/stale/appearance-only/measurement boundaries. Honest partial success is valid. Silent mutation, silent overclaim, fake continuity, fake metric trust, hidden second gating, and operator-burden backflow are not.  
+
+2026-04-21 22:04 (Athens)
+
+Below is the **strict acceptance checklist** version of the majority-synthesized DoD.
+
+**Basis rule used**
+
+* **Adopt** clauses supported by the approved outcomes plus the winning A/C line of deliberation. The majority record is clear that the correct DoD is the **A/C family, not B**; that it must preserve **authority/refusal semantics, append-only lineage, honest partial validity, and explicit stale/rebind behavior**; and that B’s “all outputs must be non-empty for internal validity” gate is rejected. The outcomes also explicitly preserve purge/regeneration risk handling and capture-regression telemetry as real cross-cutting controls.
+
+**Reading guide**
+
+* **Pass evidence** = what must exist to mark the row complete.
+* **Majority basis** uses:
+
+  * **3/3** = approved outcomes and final convergence clearly support it
+  * **A+C** = ChatGPT/Gemini majority over GLM
+  * **A+G-final** = later convergence from final positions, grounded in outcomes
+* **Status types**
+
+  * **Required** = must pass before “done”
+  * **Guarded-valid** = may be valid even if not fully publishable
+  * **Non-go** = any presence blocks completion/release
+
+---
+
+## Whole-system acceptance checklist
+
+| ID    | Acceptance check                                                                                                                                                           | Pass evidence                                       | Majority basis |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- |
+| WS-1  | Non-expert operators complete a standard capture on first attempt in at least 4/5 sessions after at most 10 minutes onboarding                                             | test report; protocol; pass/fail logs               | 3/3            |
+| WS-2  | Median active capture time is ≤45s and p95 ≤90s                                                                                                                            | time telemetry; usability report                    | 3/3            |
+| WS-3  | ≥95% of completed captures yield a processed asset without manual rescue under normal conditions                                                                           | batch run report; incident log                      | 3/3            |
+| WS-4  | End-to-end capture→usable asset completes in ≥95% of attempts on supported devices/infrastructure                                                                          | E2E reliability report                              | 3/3            |
+| WS-5  | Partial or imperfect captures degrade to flagged-but-usable outputs wherever physically possible instead of hard-failing                                                   | failure-mode audit; sampled asset set               | 3/3            |
+| WS-6  | The asset family is workflow-alive: honest view route, persistent placement where authority exists, persistent preview where authority exists, deterministic reopen/replay | replay suite; cross-output checks                   | A+C            |
+| WS-7  | Honest partial / guarded / appearance-only / refusal-bearing states remain explicit and are not collapsed into fake success                                                | publish samples; machine-readable state inspection  | A+C            |
+| WS-8  | One accepted session yields one canonical asset-family root under append-only lineage                                                                                      | lineage graph; root/descendant audit                | 3/3            |
+| WS-9  | No required runtime dependency on external reconstruction APIs, license servers, or hosted QC services                                                                     | deployment diagram; runtime dependency audit        | 3/3            |
+| WS-10 | Raw and derived artifacts are encrypted at rest and in transit; access is role-scoped and audited                                                                          | security controls; access audit logs                | 3/3            |
+| WS-11 | Publication never hides uncertainty; per-region authority remains the operational truth surface                                                                            | publish manifest checks; rendered UI/API inspection | A+C            |
+| WS-12 | External publish without an honest view-capable route is impossible                                                                                                        | publish-gate tests                                  | A+C            |
+
+The whole-system rows above come directly from the approved product/output/OQSP contracts and the majority rejection of monolithic completeness gating.
+
+---
+
+## Capture UX and shot-taking checklist
+
+| ID    | Acceptance check                                                                                                                | Pass evidence                      | Majority basis |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------- |
+| CX-1  | M1 video sweep is the primary operator-visible mode                                                                             | UX spec; app inspection            | 3/3            |
+| CX-2  | M2 fallback stays bounded; accepted-photo count including patch photos never exceeds approved ceiling                           | telemetry; capture logs            | 3/3            |
+| CX-3  | Patch capture remains bounded recovery, not a third dominant mode                                                               | telemetry; patch-depth stats       | 3/3            |
+| CX-4  | Review exposes exactly the approved four-state outcome frame                                                                    | UI inspection; event payloads      | 3/3            |
+| CX-5  | Capture is silence-by-default; no ordinary session requires tense choreography                                                  | usability study; operator feedback | A+C            |
+| CX-6  | Median zero corrective interventions, p95 ≤1 soft nudge, hard ceiling 3                                                         | intervention telemetry             | 3/3            |
+| CX-7  | M1 remains the dominant successful path in aggregate telemetry                                                                  | mode-distribution telemetry        | 3/3            |
+| CX-8  | Downstream provenance includes review outcome context, warning counters, hard-stop events, patch/retry lineage                  | mobile bundle inspection           | 3/3            |
+| CX-9  | No hidden expertise gate, no surveillance feel, no mode-switch nagging                                                          | UX review; operator interviews     | A+C            |
+| CX-10 | Capture completion is declared at “processable-enough,” not “near-perfect”                                                      | review/gating logic audit          | A+C            |
+| CX-11 | Non-go: intervention inflation, retake inflation, video demotion, silent hard-gating, capture-pretty/workflow-dead optimization | regression alarms; release block   | 3/3            |
+
+Supported by the approved capture/mobile acceptance criteria and the majority’s calm-capture / no-backward-leakage stance.
+
+---
+
+## Mobile capture pipeline checklist
+
+| ID    | Acceptance check                                                                                                                        | Pass evidence               | Majority basis |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | -------------- |
+| MB-1  | One and only one `canonical_session_id` persists across segments, patches, retries, resumptions                                         | identity audit              | 3/3            |
+| MB-2  | Raw media is delivered unmutated with preserved encoder metadata                                                                        | bundle inspection           | 3/3            |
+| MB-3  | Delivered bundle includes required manifest fields, metadata streams, event logs, hashes, and integrity proof                           | schema + completeness check | 3/3            |
+| MB-4  | Interrupted uploads resume without duplicate-session creation or re-capture requirement                                                 | interruption test suite     | 3/3            |
+| MB-5  | Backend-accepted packages have per-file hash agreement and bundle-level Merkle agreement                                                | integrity report            | 3/3            |
+| MB-6  | Partial writes never become backend-accepted sessions                                                                                   | ingest tests                | 3/3            |
+| MB-7  | No app-side process silently deletes, rewrites, substitutes, or transcodes canonical raw media before acknowledgment                    | app pipeline audit          | 3/3            |
+| MB-8  | No unencrypted media artifact exists outside the encrypted session directory; no public-gallery writes occur                            | device security test        | 3/3            |
+| MB-9  | Telemetry contains no imagery or identifying subject data                                                                               | telemetry payload audit     | 3/3            |
+| MB-10 | Non-go: patch creates new root identity, retry creates phantom duplicate sessions, review declares success on corrupt/incomplete bundle | failure-condition suite     | 3/3            |
+
+These rows are directly reflected in the mobile outcome material and majority synthesis.
+
+---
+
+## FSCQI checklist
+
+| ID   | Acceptance check                                                                                                                                    | Pass evidence            | Majority basis |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | -------------- |
+| FS-1 | FSCQI emits curated primary tier, extended candidate tier, raw reference map, coverage descriptor, weak-region register, and capture-health summary | artifact presence check  | A+C            |
+| FS-2 | FSCQI mints explicit `fscqi_bundle_version`                                                                                                         | lineage audit            | A+C            |
+| FS-3 | FSCQI emits explicit four-state processability verdict                                                                                              | verdict schema check     | A+C            |
+| FS-4 | Unique moderate-quality views can outrank pristine duplicates                                                                                       | ranked-case test set     | A+C            |
+| FS-5 | Minor blur/exposure drift/gaps do not default to retry                                                                                              | regression set           | A+C            |
+| FS-6 | `PROCESS_WITH_FLAGS` remains a valid route for honest partial sessions                                                                              | verdict→downstream audit | A+C            |
+| FS-7 | Weak-region truth is preserved downstream instead of collapsed into a scalar gate                                                                   | handoff inspection       | A+C            |
+| FS-8 | Non-go: scalar utility used as hidden veto; ordinary handheld messiness systematically forces retry                                                 | gating audit             | A+C            |
+
+Majority support comes from the A/C contract line and the grounded artifact specificity later conceded into the record.
+
+---
+
+## SIAT checklist
+
+| ID   | Acceptance check                                                                                                                                          | Pass evidence              | Majority basis |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------- |
+| SI-1 | SIAT emits `target_alpha_soft`, `target_core_mask`, `target_mask_hard`, `static_rigid_core` / `pose_safe_support_mask`, and `boundary_confidence_channel` | artifact presence          | A+C            |
+| SI-2 | Ambiguity is preserved; uncertainty is not forced into crisp binary boundaries                                                                            | mask review set            | A+C            |
+| SI-3 | Occlusion labels and ambiguity tags are explicit and downstream-readable                                                                                  | schema check               | A+C            |
+| SI-4 | Target-adjacent context margins are retained sufficiently for placement/preview workflows                                                                 | downstream case validation | A+C            |
+| SI-5 | Non-go: silent target identity drift, crisp unsupported boundaries, aggressive context stripping                                                          | failure-case suite         | A+C            |
+
+Grounded in the accepted A/C synthesis of SIAT honesty and context preservation.
+
+---
+
+## REG checklist
+
+| ID   | Acceptance check                                                                                                                         | Pass evidence             | Majority basis |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------- |
+| RG-1 | REG emits per-observation intrinsics/extrinsics, registration graph, `pose_version`, and registration state                              | artifact presence         | A+C            |
+| RG-2 | `feature_support_regime ∈ {core_only, core_plus_context, fallback_wide}` is explicit where required                                      | schema validation         | A+G-final      |
+| RG-3 | Scale regime, scale confidence band, `metric_trust_allowed`, `measurement_validity_claim`, and `measurement_use_prohibited` are explicit | measurement posture audit | A+C            |
+| RG-4 | Partial and fragmented registration remains valid when honestly surfaced                                                                 | case set                  | A+C            |
+| RG-5 | “Close but slightly shifted” is treated as failure, not tolerance                                                                        | replay/regeneration suite | 3/3            |
+| RG-6 | Non-go: forced single global component from unearned evidence; hallucinated scale confidence                                             | adversarial test set      | A+C            |
+
+The `feature_support_regime` row is specifically supported by the later majority correction that it was grounded, not hallucinated.
+
+---
+
+## DG checklist
+
+| ID   | Acceptance check                                                                                                  | Pass evidence              | Majority basis |
+| ---- | ----------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------- |
+| DG-1 | DG emits `geometry_version`, `surface_fragment_set`, `hole_and_open_boundary_map`, and `surface_usefulness_zones` | artifact presence          | A+C            |
+| DG-2 | Structural proxy and appearance scaffold remain explicitly distinct responsibilities                              | geometry bundle inspection | A+G-final      |
+| DG-3 | Fragment-preserving output is maintained; unsupported gaps are not cosmetically bridged                           | geometry review set        | A+C            |
+| DG-4 | Open-boundary semantics remain explicit                                                                           | schema + sample inspection | A+C            |
+| DG-5 | `severe_geometry_concern` is emitted when no placement-relevant anchor zone exists                                | concern aggregation test   | A+C            |
+| DG-6 | Non-go: hallucinated skin closure, unsupported fragment merging, suppression of coherent partial surfaces         | failure-case suite         | A+C            |
+
+The proxy/scaffold split is one of the specific points later agreed to be grounded in the approved outcomes.
+
+---
+
+## Photoreal view-capable realization checklist
+
+| ID   | Acceptance check                                                                                                  | Pass evidence              | Majority basis |
+| ---- | ----------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------- |
+| VW-1 | A lineage-addressable `view_version` exists                                                                       | artifact presence          | A+C            |
+| VW-2 | Near-capture viewpoints satisfy the photo-like contract                                                           | blinded comparison test    | 3/3            |
+| VW-3 | Believable skin tone, skin microtexture, and lighting plausibility are preserved                                  | appearance review set      | 3/3            |
+| VW-4 | Outside the supported envelope, degradation is blur/ghosting rather than tears, floaters, inversions, or collapse | out-of-envelope test set   | 3/3            |
+| VW-5 | Appearance-only viewing route is explicit when it is the highest honest route available                           | route classification audit | A+C            |
+| VW-6 | View realism never implies placement or preview authority by itself                                               | downstream contract test   | A+C            |
+| VW-7 | Non-go: beautiful orbit but workflow-dead asset; hidden randomness that changes practical output                  | replay suite               | A+C            |
+
+These are supported by the output contract plus the majority insistence that view-only realism cannot masquerade as edit authority.
+
+---
+
+## EDSIM checklist
+
+| ID    | Acceptance check                                                                                                                        | Pass evidence          | Majority basis |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | -------------- |
+| ED-1  | EDSIM emits `placement_authority_map.json`                                                                                              | artifact presence      | A+C            |
+| ED-2  | EDSIM emits `preview_authority_map.json`                                                                                                | artifact presence      | A+C            |
+| ED-3  | EDSIM emits `appearance_only_routes.json`                                                                                               | artifact presence      | A+C            |
+| ED-4  | EDSIM emits refusal-zone outputs and append-only placement/preview state bundles                                                        | artifact presence      | A+C            |
+| ED-5  | `stale_rebind_register.json` exists and is exercised on lineage-changing patches                                                        | patch regression suite | A+C            |
+| ED-6  | `edit_readiness_summary` is descriptive only and cannot override region-level maps                                                      | contract test          | A+C            |
+| ED-7  | `auto_rebind_identical` is the only automatic persistent rebind path                                                                    | patch semantics audit  | A+C            |
+| ED-8  | Non-identical cases become `stale_requires_review` or `retired` rather than silently adjusted                                           | patch regression suite | A+C            |
+| ED-9  | `preview_appearance_only` routes are non-persistent by construction                                                                     | persistence test       | A+C            |
+| ED-10 | Non-go: unsupported substrate promoted into persistent edit authority; silent relocation/remapping; upstream truth overwritten by EDSIM | release-block suite    | A+C            |
+
+This is one of the clearest majority-supported sections because the winning argument centered on EDSIM as an authority-routing layer rather than a generic editing subsystem.
+
+---
+
+## OQSP checklist
+
+| ID    | Acceptance check                                                                                                                                                                          | Pass evidence             | Majority basis |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------- |
+| OQ-1  | OQSP binds one integrity-verified mobile session 1:1 to one persisted asset-family root                                                                                                   | lineage audit             | 3/3            |
+| OQ-2  | All raw and derived artifacts are stored append-only under content addressing                                                                                                             | storage audit             | 3/3            |
+| OQ-3  | Immutable `publish_manifest.json` exists over coherent lineage tuples                                                                                                                     | artifact presence         | 3/3            |
+| OQ-4  | The 8-artifact QC set is present and machine-readable                                                                                                                                     | artifact presence         | A+G-final      |
+| OQ-5  | OQSP preserves upstream weakness/refusal/stale signals and never beautifies them away                                                                                                     | QC synthesis audit        | 3/3            |
+| OQ-6  | Publishing is deterministic composite manifest synthesis, not a hidden new scientific layer                                                                                               | publish replay test       | 3/3            |
+| OQ-7  | Dependency-scoped invalidation occurs after patch; no blind full rerun by default                                                                                                         | patch orchestration test  | A+C            |
+| OQ-8  | No stronger geometry, confidence, edit authority, measurement posture, or completeness is invented downstream                                                                             | publish/pipeline audit    | 3/3            |
+| OQ-9  | External publish without an honest view-capable route is impossible                                                                                                                       | publish gate test         | A+C            |
+| OQ-10 | Non-go: mutable/non-content-addressed publish refs, dropped honesty channels, failed-unrecoverable external publish, silent purge of required provenance, ambiguous supersession ordering | integrity + failure suite | 3/3            |
+
+The OQSP rows are among the most strongly supported because the approved outcomes explicitly define OQSP as “bound to preserve, not beautify.”
+
+---
+
+## Cross-cutting checklist
+
+| ID    | Acceptance check                                                                                                 | Pass evidence                 | Majority basis |
+| ----- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------- | -------------- |
+| CC-1  | Stage versions, QC versions, and publish manifests are never mutated in place                                    | lineage/version audit         | 3/3            |
+| CC-2  | Patches, reruns, publishes, stale/rebind verdicts, and supersessions are append-only, monotonic, and auditable   | event log audit               | 3/3            |
+| CC-3  | Region-level authority always overrides summary/readiness headlines                                              | contract test                 | A+C            |
+| CC-4  | Honest partial / guarded / appearance-only / refusal-bearing states are valid internal completions               | state-classification test     | A+C            |
+| CC-5  | Structural-only or edit-only states may remain valid internal lineage without external publication               | publish classification test   | A+C            |
+| CC-6  | Same canonical asset + same derivation context + same parameters = same practical output                         | deterministic replay suite    | 3/3            |
+| CC-7  | “Close but slightly shifted” is failure, not tolerance                                                           | replay suite                  | 3/3            |
+| CC-8  | No silent mutation of geometry, correspondence, pipeline version, or persistent edits                            | migration + patch suite       | 3/3            |
+| CC-9  | Purge is explicit, auditable, lineage-safe, and cascade-safe                                                     | purge workflow test           | A+G-final      |
+| CC-10 | After purge removes required provenance, the asset cannot still claim regenerability/replayability               | purge/regeneration truth test | A+G-final      |
+| CC-11 | Telemetry is opt-in, operational-only, and cannot change capture/upload behavior                                 | telemetry governance audit    | 3/3            |
+| CC-12 | Operational telemetry tripwires detect intervention inflation, retry inflation, patch inflation, and M1 demotion | production telemetry checks   | A+G-final      |
+| CC-13 | No hidden second processability gate appears after honest partial states are admitted                            | orchestration audit           | A+C            |
+| CC-14 | No fake watertightness, fake continuity, fake metric trust, or clinical/predictive implication by default        | contract + UI/API review      | 3/3            |
+
+The later record supports treating both purge/regeneration truth and telemetry tripwires as real cross-cutting completion gates.
+
+---
+
+## Release and publish gate checklist
+
+| ID   | Acceptance check                                                                                                                                     | Pass evidence        | Majority basis |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | -------------- |
+| PG-1 | Internal validity does **not** require all outputs R-OUT-1..R-OUT-7 to be non-empty                                                                  | gate logic audit     | A+C            |
+| PG-2 | Internal validity requires verified identity/lineage plus intact machine-readable honesty channels                                                   | gate logic audit     | A+C            |
+| PG-3 | External publish requires an honest view-capable route                                                                                               | publish gate test    | A+C            |
+| PG-4 | Appearance-only view route may satisfy the honest publish floor when it is the highest honest route available                                        | publish-class tests  | A+C            |
+| PG-5 | Publish with flags is valid when machine-readable bounds remain intact                                                                               | publish sample audit | 3/3            |
+| PG-6 | Structural-only or edit-only internal states remain internal-only unless view-capable floor is met                                                   | publish-class tests  | A+C            |
+| PG-7 | Missing honesty channels, lineage corruption, integrity failures, failed-unrecoverable lineage, false metric trust, or silent mutation block publish | release-block suite  | 3/3            |
+| PG-8 | Partial-but-workflow-alive assets publish where the honest publish floor is met                                                                      | publish sample audit | 3/3            |
+
+This section directly encodes the majority rejection of B’s completeness gate.
+
+---
+
+## Evidence / verification master checklist
+
+| ID    | Acceptance check                                                                                                          | Pass evidence         | Majority basis |
+| ----- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- | -------------- |
+| EV-1  | Automated integrity tests pass across all stage artifacts and handoffs                                                    | CI report             | 3/3            |
+| EV-2  | Replay/regeneration tests pass for placement and preview                                                                  | replay suite          | 3/3            |
+| EV-3  | Lineage integrity checks pass across `fscqi_bundle_version`, `view_version`, QC/publish versions, and descendant pointers | lineage report        | A+C            |
+| EV-4  | Schema/version checks pass for all machine-readable honesty channels                                                      | schema validation     | 3/3            |
+| EV-5  | Cross-output consistency checks pass on claimed regions                                                                   | consistency report    | 3/3            |
+| EV-6  | Publish-manifest checks pass                                                                                              | manifest validation   | 3/3            |
+| EV-7  | Region-level honesty checks pass; summaries never override regional truth                                                 | contract tests        | A+C            |
+| EV-8  | Patch-update regression checks pass, including identical vs non-identical rebind behavior                                 | patch suite           | A+C            |
+| EV-9  | Refusal/stale/guarded/appearance-only behavior checks pass                                                                | state-machine tests   | A+C            |
+| EV-10 | Operator-facing behavior checks pass, including calm-capture telemetry thresholds                                         | UX + telemetry report | A+G-final      |
+| EV-11 | Purge/regeneration truth checks pass                                                                                      | purge suite           | A+G-final      |
+
+---
+
+## Explicit exclusions from the majority DoD
+
+These did **not** make the majority synthesis as binding gates:
+
+| EX-ID | Excluded clause                                                     | Why excluded                                                                                                                                     |
+| ----- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| EX-1  | “Internal validity requires all R-OUT-1..R-OUT-7 to be non-empty”   | Explicitly rejected by majority as incompatible with honest partial / guarded / appearance-only valid states                                     |
+| EX-2  | Required statistical floor for `PROCESS_CLEAN` or unflagged outputs | Later majority record treats this as an invented metric not present in the approved contract                                                     |
+| EX-3  | GDPR-style legal architecture as a hard design premise              | Rejected as external legal improvisation not established by the source set                                                                       |
+| EX-4  | Literal “perfect” cross-output co-registration                      | Overstates the approved contract, which requires practical/deterministic correspondence and visually undetectable drift, not perfection language |
+
+## Still not hardenable from the current record
+
+These need explicit future validation rather than pretending they are already contract-fixed:
+
+* exact numeric drift budget
+* exact legal retention duration policy
+* exact target distribution of publishability classes in production
+* exact downstream UI mechanics beyond honoring machine-readable authority/refusal signals.
+
+
