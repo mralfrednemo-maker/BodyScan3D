@@ -1283,8 +1283,8 @@ app.post('/api/internal/scans/:id/status', requireInternal, (req, res) => {
   if (errorMessage) q.run('UPDATE scans SET errorMessage=? WHERE id=?', errorMessage, req.params.id);
   // Store FSCQI bundle FK in capture_metadata (FS-1)
   if (fscqi_bundle_id != null) {
-    q.run('INSERT OR REPLACE INTO capture_metadata (scan_id,fscqi_bundle_id) VALUES (?,?)',
-      req.params.id, fscqi_bundle_id);
+    q.run('UPDATE capture_metadata SET fscqi_bundle_id=? WHERE scan_id=?',
+      fscqi_bundle_id, req.params.id);
   }
   // Store failure classification for retake guidance
   if (failureClass && FAILURE_CLASSES[failureClass]) {
@@ -1428,8 +1428,8 @@ app.post('/api/internal/scans/:id/fscqi-bundle', requireInternal, (req, res) => 
   );
 
   // Also store fscqi_bundle_id in capture_metadata
-  q.run('INSERT OR REPLACE INTO capture_metadata (scan_id, fscqi_bundle_id) VALUES (?,?)',
-    scanId, result.lastInsertRowid);
+  q.run('UPDATE capture_metadata SET fscqi_bundle_id=? WHERE scan_id=?',
+    result.lastInsertRowid, scanId);
 
   // Record lineage event (FSCQI is the first artifact — no parent)
   const fscqiContent = { verdict, health_summary, coverage_descriptor, primary_tier, raw_reference_map };

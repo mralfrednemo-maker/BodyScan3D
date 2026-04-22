@@ -12,6 +12,287 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+    // Minimal QR code generator — renders to canvas, no external API, token stays local
+    // Based on https://github.com/nickytonline/qr-code-generator (MIT, inlined)
+    function generateQR(container, text, size) {
+      // Server-side fallback: request QR from our own server
+      var img = document.createElement('img');
+      img.src = '/api/qr?data=' + encodeURIComponent(text) + '&size=' + size;
+      img.width = size; img.height = size;
+      img.alt = 'QR code';
+      img.onerror = function() {
+        container.innerHTML = '<div style="font-size:11px;color:#333;word-break:break-all;padding:8px">' + text + '</div>';
+      };
+      container.appendChild(img);
+    }
+
+    // BodyScan 3D — 3D Capture Widget
+    // Injects a "Start 3D Capture" button into scan detail pages
+    (function() {
+      var WIDGET_ID = 'bs3d-capture-widget';
+      var currentScanId = null;
+      var visitorId = null;
+
+      // Intercept fetch to capture the visitor ID the React app uses
+      var _origFetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (opts && opts.headers) {
+          var h = opts.headers;
+          var v = (typeof h.get === 'function' ? h.get('X-Visitor-Id') : h['X-Visitor-Id']) ||
+                  (typeof h.get === 'function' ? h.get('x-visitor-id') : h['x-visitor-id']);
+          if (v) visitorId = v;
+        }
+        return _origFetch.apply(this, arguments);
+      };
+
+      function getVisitorId() {
+        if (!visitorId) {
+          for (var k of Object.keys(localStorage)) {
+            if (/visitor|session|auth|user/i.test(k)) {
+              var v = localStorage.getItem(k);
+              if (v && v.length > 20 && !v.startsWith('{')) { visitorId = v; break; }
+            }
+          }
+        }
+        return visitorId;
+      }
+
+      function getScanIdFromUrl() {
+        var m = (location.pathname + location.hash).match(/\/scans\/(\d+)/);
+        return m ? m[1] : null;
+      }
+
+      function removeWidget() {
+        var w = document.getElementById(WIDGET_ID);
+        if (w) w.remove();
+        currentScanId = null;
+      }
+
+      async function fetchScan(scanId) {
+        var vid = getVisitorId();
+        if (!vid) return null;
+        try {
+          var r = await fetch('/api/scans/' + scanId, { headers: { 'X-Visitor-Id': vid } });
+          return r.ok ? r.json() : null;
+        } catch(e) { return null; }
+      }
+
+      async function createCaptureSession(scanId) {
+        var vid = getVisitorId();
+        if (!vid) return null;
+        try {
+          var r = await fetch('/api/scans/' + scanId + '/capture-session', {
+            method: 'POST',
+            headers: { 'X-Visitor-Id': vid, 'Content-Type': 'application/json' }
+          });
+          return r.ok ? r.json() : null;
+        } catch(e) { return null; }
+      }
+
+      // Pipeline state labels and colors (uses pipelineStatus field from API)
+      var PIPELINE_LABEL = {
+        'CREATED':          'Awaiting capture',
+        'CAPTURING':        'Capture in progress',
+        'UPLOADING':        'Uploading frames',
+        'FRAME_QA':         'Checking frames',
+        'AWAITING_TARGET':  'Select target area',
+        'MASKING':          'Generating masks',
+        'RECONSTRUCTING':   'Building 3D model',
+        'POST_PROCESSING':  'Finalizing model',
+        'COMPLETED':        'Ready',
+        'FAILED':           'Processing failed'
+      };
+      var PIPELINE_COLOR = {
+        'CREATED':         '#f59e0b',
+        'CAPTURING':       '#14b8a6',
+        'UPLOADING':       '#14b8a6',
+        'FRAME_QA':        '#14b8a6',
+        'AWAITING_TARGET': '#8b5cf6',
+        'MASKING':         '#3b82f6',
+        'RECONSTRUCTING':  '#3b82f6',
+        'POST_PROCESSING': '#3b82f6',
+        'COMPLETED':       '#22c55e',
+        'FAILED':          '#ef4444'
+      };
+      // Pipeline progress steps for in-progress display
+      var PIPELINE_STEPS = ['UPLOADING','FRAME_QA','MASKING','RECONSTRUCTING','POST_PROCESSING'];
+
+      function escHtml(s) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(s));
+        return d.innerHTML;
+      }
+
+      function getState(scan) {
+        // pipelineStatus is the real state; fall back to legacy status for old records
+        return scan.pipelineStatus || scan.status;
+      }
+
+      function renderWidget(scanId, scan) {
+        removeWidget();
+        if (!scan) return;
+        var state = getState(scan);
+        // Hide widget once fully complete with a model
+        if (state === 'COMPLETED' && scan.modelUrl) return;
+        if ((scan.status || '').toLowerCase() === 'ready' && scan.modelUrl) return;
+
+        var w = document.createElement('div');
+        w.id = WIDGET_ID;
+        w.style.cssText = [
+          'position:fixed', 'bottom:24px', 'right:24px',
+          'background:#111827', 'border:1px solid #1e293b',
+          'border-radius:16px', 'padding:20px 24px',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5)',
+          'z-index:9999', 'min-width:280px', 'max-width:340px',
+          'font-family:-apple-system,BlinkMacSystemFont,sans-serif',
+          'color:#fff'
+        ].join(';');
+
+        var statusLabel = PIPELINE_LABEL[state] || scan.status;
+        var statusColor = PIPELINE_COLOR[state] || '#94a3b8';
+
+        w.innerHTML = [
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">',
+          '  <div>',
+          '    <div style="font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:2px">3D CAPTURE</div>',
+          '    <div style="font-size:15px;font-weight:600">' + escHtml(scan.title || 'Scan #' + scanId) + '</div>',
+          '  </div>',
+          '  <span style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;background:' + statusColor + '22;color:' + statusColor + '">' + statusLabel + '</span>',
+          '</div>',
+          '<div id="bs3d-widget-body"></div>',
+          '<div id="bs3d-widget-msg" style="font-size:12px;color:#64748b;margin-top:10px;text-align:center"></div>'
+        ].join('');
+
+        document.body.appendChild(w);
+        currentScanId = scanId;
+
+        var body = document.getElementById('bs3d-widget-body');
+        var msg  = document.getElementById('bs3d-widget-msg');
+
+        if (state === 'CREATED' || state === 'CAPTURING' || state === 'UPLOADING' ||
+            state === 'Processing' || state === 'Capturing') {
+          // Ready to capture or already capturing — show QR generation button
+          body.innerHTML = [
+            '<button id="bs3d-btn-capture" style="width:100%;padding:12px;background:#14b8a6;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">',
+            '  Start 3D Capture on Phone',
+            '</button>'
+          ].join('');
+
+          document.getElementById('bs3d-btn-capture').onclick = async function() {
+            this.disabled = true; this.textContent = 'Generating link...';
+            var session = await createCaptureSession(scanId);
+            if (session && session.captureUrl) {
+              body.innerHTML = [
+                '<div style="font-size:13px;color:#94a3b8;margin-bottom:10px">Scan this QR code or open the link on your phone:</div>',
+                '<div id="bs3d-qr" style="background:#fff;padding:12px;border-radius:8px;display:flex;justify-content:center;margin-bottom:10px"></div>',
+                '<div style="font-size:11px;word-break:break-all;color:#64748b;background:#0f172a;padding:8px;border-radius:6px;cursor:pointer" onclick="navigator.clipboard&&navigator.clipboard.writeText(\'' + session.captureUrl + '\').then(()=>this.textContent=\'Copied!\').catch(()=>{})" title="Click to copy">' + session.captureUrl + '</div>',
+                '<div style="display:flex;gap:8px;margin-top:10px">',
+                '  <button onclick="window.open(\'' + session.captureUrl + '\',\'_blank\')" style="flex:1;padding:10px;background:#0f172a;border:1.5px solid #1e293b;border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer">Open on this device</button>',
+                '  <button onclick="document.getElementById(\'' + WIDGET_ID + '\').remove()" style="padding:10px 14px;background:transparent;border:1.5px solid #1e293b;border-radius:8px;color:#64748b;font-size:13px;cursor:pointer">Hide</button>',
+                '</div>'
+              ].join('');
+              // Generate QR code locally via canvas (no external API — token stays private)
+              var qrEl = document.getElementById('bs3d-qr');
+              if (qrEl && typeof generateQR === 'function') {
+                generateQR(qrEl, session.captureUrl, 160);
+              } else if (qrEl) {
+                // Fallback: display URL as text if QR lib not available
+                qrEl.innerHTML = '<div style="font-size:11px;color:#333;word-break:break-all;padding:8px">' + session.captureUrl + '</div>';
+              }
+            } else {
+              msg.textContent = 'Error creating session. Refresh and try again.';
+              this.disabled = false; this.textContent = 'Start 3D Capture on Phone';
+            }
+          };
+
+        } else if (state === 'AWAITING_TARGET' || state === 'Awaiting_Prompt') {
+          // Frames captured — surgeon must select the target body area on the prompt UI
+          var vid = getVisitorId() || '';
+          var promptUrl = '/prompt.html?scan=' + scanId + (vid ? '&vid=' + encodeURIComponent(vid) : '');
+          body.innerHTML = [
+            '<div style="font-size:13px;color:#94a3b8;margin-bottom:12px">',
+            '  Frames captured. Select the body area to model:',
+            '</div>',
+            '<button onclick="window.open(\'' + promptUrl + '\',\'_blank\')" style="width:100%;padding:12px;background:#8b5cf6;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">',
+            '  Select Target Area',
+            '</button>',
+            '<div style="font-size:11px;color:#64748b;margin-top:8px;text-align:center">',
+            '  Or open <b style="color:#94a3b8">' + location.origin + promptUrl + '</b> on your phone',
+            '</div>'
+          ].join('');
+
+        } else if (state === 'MASKING' || state === 'RECONSTRUCTING' || state === 'POST_PROCESSING') {
+          // Pipeline is running — show step progress
+          var stepIdx = PIPELINE_STEPS.indexOf(state);
+          var stepsHtml = PIPELINE_STEPS.map(function(s, i) {
+            var done  = i < stepIdx;
+            var active = i === stepIdx;
+            var col   = done ? '#22c55e' : (active ? '#3b82f6' : '#1e293b');
+            var lbl   = { 'UPLOADING':'Upload', 'FRAME_QA':'QA', 'MASKING':'Mask', 'RECONSTRUCTING':'Rebuild', 'POST_PROCESSING':'Finalize' }[s];
+            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+              + '<div style="width:28px;height:28px;border-radius:50%;background:' + col + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">'
+              + (done ? '✓' : (i + 1))
+              + '</div>'
+              + '<div style="font-size:10px;color:' + (active ? '#fff' : '#64748b') + '">' + lbl + '</div>'
+              + '</div>';
+          }).join('<div style="height:2px;width:100%;background:#1e293b;margin-top:14px;flex:1"></div>');
+
+          body.innerHTML = [
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' + stepsHtml + '</div>',
+            '<div style="font-size:12px;color:#64748b;text-align:center">Processing automatically — no action needed</div>'
+          ].join('');
+
+        } else if (state === 'FAILED') {
+          var guidance = scan.retakeGuidance || 'Reconstruction failed.';
+          var canRetake = scan.retakeAllowed !== false;
+          body.innerHTML = [
+            '<div style="font-size:13px;color:#ef4444;margin-bottom:10px">' + escHtml(guidance) + '</div>',
+            canRetake ? '<button onclick="location.reload()" style="width:100%;padding:10px;background:#0f172a;border:1.5px solid #ef4444;border-radius:8px;color:#ef4444;font-size:13px;cursor:pointer">Retry Capture</button>' : ''
+          ].join('');
+        }
+      }
+
+      var lastPath = null;
+      var lastState = null;
+      function checkRoute() {
+        var path = location.pathname + location.hash;
+        var scanId = getScanIdFromUrl();
+        if (!scanId) { removeWidget(); lastPath = path; return; }
+
+        // On path change: always re-fetch. On same path: poll for status changes.
+        if (path !== lastPath) {
+          lastPath = path;
+          lastState = null;
+          var keys = Object.keys(localStorage);
+          for (var k of keys) {
+            if (k.includes('visitor') || k.includes('session')) {
+              var v = localStorage.getItem(k);
+              if (v && v.length > 10) { visitorId = v; break; }
+            }
+          }
+        }
+
+        fetchScan(scanId).then(function(scan) {
+          if (!scan) return;
+          var newState = getState(scan);
+          // Re-render if state changed or first load
+          if (newState !== lastState) {
+            lastState = newState;
+            renderWidget(scanId, scan);
+          }
+        });
+      }
+
+      // Poll for route changes (React SPA uses history.pushState or hash routing)
+      var origPushState = history.pushState;
+      history.pushState = function() { origPushState.apply(this, arguments); setTimeout(checkRoute, 300); };
+      window.addEventListener('popstate', function() { setTimeout(checkRoute, 300); });
+      window.addEventListener('hashchange', function() { setTimeout(checkRoute, 300); });
+      window.addEventListener('load', function() { setTimeout(checkRoute, 800); });
+      setInterval(checkRoute, 2000);
+    })();
+    </script>
   <script data-pplx-inline-edit>
 (function(){
   if(window===window.top)return;
