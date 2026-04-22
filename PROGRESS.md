@@ -61,3 +61,5 @@
 ```
 fab487b feat: DoD Phase 2 — full 8-stage pipeline + Definition of Done compliance
 ```
+
+<!-- test hook -->
