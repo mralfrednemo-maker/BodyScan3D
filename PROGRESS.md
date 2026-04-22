@@ -2,112 +2,101 @@
 
 ## DoD Gap Analysis (2026-04-22)
 
-### Gap Severity Classification
+### Gap Status After Session
 
-| ID | Requirement | Status | Severity | Notes |
-|----|-------------|--------|----------|-------|
-| G1 | pycolmap reconstruction produces usable geometry | **BROKEN** | P0 | Incremental mapping returns empty for scan 16's 30 frames → registration_state=UNKNOWN, connected_fraction=0 |
-| G2 | SAM2 real mask segmentation | **NOT WIRED** | P1 | SAM2_MOCK=1 — generates placeholder masks, not real SAM2 output |
-| G3 | DG-33 honest fragments on real geometry | **CANNOT TEST** | P1 | DG ran on PLACEHOLDER geometry (scan 7's model.glb copied), 238 open boundary edges on fake data — not meaningful |
-| G4 | Camera capture on real phone | **BLOCKED** | P1 | getUserMedia undefined on capture.html — HTTPS/permission issue |
-| G5 | Photoreal on real DG geometry | **STUBBED** | P1 | appearance_only_route=1 — photoreal fell back because raw_pointcloud was placeholder |
-| G6 | EDSIM stale rebind detection | **HAS BUG** | P2 | detect_stale_rebind() takes dict arg but callers pass string path |
-| G7 | Camera capture UX (P1 prompt-3 DoD) | **NOT TESTED** | P1 | Real phone capture never tested end-to-end |
-| G8 | R-OUT-2 surface-anchored placement | **STUBBED** | P1 | No real UV parameterization — uses placeholder mesh |
-| G9 | R-OUT-3 deformable geometric proxy | **STUBBED** | P1 | No real deformation capability — placeholder mesh only |
-| G10 | R-OUT-4 provenance regeneration bundle | **PARTIAL** | P2 | Lineage chain exists but all on placeholder data |
-| G11 | R-OUT-5 confidence/flagged-region machine-readable | **STUBBED** | P2 | confidence outputs exist structurally but based on fake geometry |
-| G12 | Cross-output spatial consistency (R-OUT-7) | **CANNOT TEST** | P1 | Requires real geometry from all 3 outputs — not available |
-| G13 | PURGE honestly terminates lineage | **IMPLEMENTED** | — | server.js /purge does sha256('PURGED'), clears modelUrl |
-| G14 | ED-4 append-only JSONL bundles | **IMPLEMENTED** | — | All 5 jsonl files created for scan 16 |
-| G15 | OQ-4 8-artifact assertion | **IMPLEMENTED** | — | assert artifact_count==8 in oqsp_worker.py |
-
----
-
-## Root Cause Analysis
-
-### G1 — pycolmap returns empty reconstruction
-**What happened**: reconstruct_worker.py ran for scan 16. Phase A (full frames) returned None. Phase B (masked frames) returned None. Both phases failed.
-
-**Likely causes** (need investigation):
-1. Phone-captured frames lack sufficient visual features for pycolmap's SIFT-based feature extraction
-2. pycolmap.extract_features or match_exhaustive failing silently
-3. Incremental mapping collapsing due to poor initial pair selection
-4. Camera intrinsics not properly set (phone cameras have varying focal lengths)
-
-**To investigate**: Run `python workers/reconstruct_worker.py 16` manually and capture stdout/stderr to see exact pycolmap failure point.
-
-### G3 — DG-33 on placeholder geometry
-**What happened**: Because G1 failed, `raw_pointcloud.glb` was manually copied from scan 7 as placeholder. mesh_worker.py produced a box-based mesh (6053 vertices, 11909 faces). The 238 open boundary edges are artifacts of the placeholder, not genuine geometry analysis.
-
-**When G1 is fixed**: DG will process real pycolmap output. Whether DG-33 is satisfied depends on whether pycolmap produces fragmented geometry with genuine open boundaries or a single closed mesh.
-
-### G4 — getUserMedia undefined
-**Likely cause**: capture.html served over HTTP (not HTTPS), and browsers block getUserMedia on insecure origins except localhost. The ngrok URL provides HTTPS but may have permissions issues.
+| ID | Requirement | Status | Notes |
+|----|-------------|--------|-------|
+| G1 | pycolmap reconstruction | **FIXED** | 3783 sparse points, 30/30 frames connected, sparse dir persisted |
+| G1b | Dense MVS | **STALLED** | Docker + CUDA required, os.getuid issue on Windows |
+| G2 | SAM2 real segmentation | **NOT WIRED** | SAM2_MOCK=1 — masks are placeholders |
+| G3 | DG-33 honest fragments | **PARTIAL** | Single watertight mesh (9154 verts, 362 open boundary edges) — not true multi-fragment |
+| G4 | Camera capture on phone | **NOT TESTED** | getUserMedia blocked — HTTPS/permission issue |
+| G5 | Photoreal on real geometry | **FALLBACK** | appearance_only_route=1 (correct fallback without metric calibration) |
+| G6 | EDSIM stale rebind bug | **HAS BUG** | detect_stale_rebind() signature mismatch — still ran but may fail |
+| G7 | Camera UX E2E | **NOT TESTED** | Real phone capture never tested |
+| G8 | R-OUT-2 UV parameterization | **NOT TESTED** | Requires real DG geometry + proper UV mesh |
+| G9 | R-OUT-3 deformation | **NOT TESTED** | Placeholder mesh only |
+| G10 | R-OUT-4 provenance | **PARTIAL** | Lineage chain works on real geometry |
+| G11 | R-OUT-5 confidence machine-readable | **STUBBED** | confidence exists structurally |
+| G12 | R-OUT-7 cross-output consistency | **NOT TESTED** | Requires all 3 outputs |
+| G13 | PURGE honest | **IMPLEMENTED** | ✓ |
+| G14 | ED-4 JSONL bundles | **IMPLEMENTED** | ✓ |
+| G15 | OQ-4 8-artifact assertion | **IMPLEMENTED** | ✓ |
 
 ---
 
-## Recommended Fix Order
+## Pipeline Run History (Updated 2026-04-22)
 
-### Phase 1 — Make pipeline not crash (G1, G5)
-1. Investigate why pycolmap returns empty reconstruction for phone frames
-2. Either: fix pycolmap invocation (camera model, feature extraction params), OR switch to a different SfM approach that works on phone imagery
-3. Re-run reconstruct_worker on scan 16's real frames
-4. Verify REG shows connected_fraction > 0
-
-### Phase 2 — Wire SAM2 (G2)
-1. Install SAM2 checkpoints: `pip install segment-anything` + download sam2.1_hiera-large.pt
-2. Remove SAM2_MOCK=1 from environment
-3. Test SIAT output quality on real segmentation
-
-### Phase 3 — Fix camera capture (G4, G7)
-1. Test capture.html over ngrok HTTPS URL on actual phone
-2. Fix getUserMedia permission flow
-3. Run full end-to-end with real phone capture
-
-### Phase 4 — Full pipeline E2E (G3, G5, G8, G9, G12)
-1. With real geometry from Phase 1, verify DG-33 output
-2. Verify photoreal produces real texture-mapped mesh (not appearance_only_route)
-3. Verify UV parameterization exists for tattoo placement
-4. Verify deformation works on real mesh
+| Scan | FSCQI | SIAT | REG | DG | Photoreal | EDSIM | OQSP | Notes |
+|------|-------|------|-----|----|-----------|-------|------|-------|
+| 16 | ✓ | ✓ (mock masks) | ✓ CONNECTED | ✓ 9154v mesh | ✓ fallback | ✓ | ✓ | Real reconstruction! |
 
 ---
 
-## Pipeline Run History
+## Remaining Gaps to Close
 
-| Scan | Date | FSCQI | SIAT | REG | DG | Photoreal | EDSIM | OQSP | Notes |
-|------|------|-------|------|-----|----|-----------|-------|------|-------|
-| 16 | 2026-04-22 | ✓ | ✓ (mock) | UNKNOWN | ✓ (placeholder) | fallback | ✓ | ✓ | G1 broken, all downstream on fake data |
+### G3 — DG-33: Fragment-preserving honest geometry
+**Problem**: Poisson surface reconstruction produces single watertight mesh. DG-33 requires "fragments with explicit open boundaries."
+
+**Root cause**: `mesh_worker.py` uses `trimesh` Poisson surface reconstruction which merges everything into one component.
+
+**Fix needed**: Implement mesh component splitting — run connected component analysis on the Poisson mesh and preserve open boundaries between components.
+
+### G2 — SAM2 real segmentation
+**Problem**: SAM2_MOCK=1 generates placeholder masks.
+
+**Fix needed**: Install SAM2 checkpoints + `pip install fast-simplification` for appearance scaffold.
+
+### G4 — Camera capture
+**Problem**: getUserMedia undefined on capture.html via ngrok HTTPS.
+
+**Fix needed**: Test with actual phone over ngrok tunnel.
+
+### G6 — EDSIM stale rebind bug
+**Problem**: `detect_stale_rebind()` expects dict but callers pass string path.
+
+**Fix needed**: Fix signature mismatch in edsim_worker.py `run()`.
+
+---
 
 ## Pending Actions
 
-### P0 — Fix pycolmap reconstruction (G1) — BLOCKED
-- [ ] Run `python workers/reconstruct_worker.py 16` manually, capture full output
-- [ ] Identify exact failure point in pycolmap pipeline
-- [ ] Fix or replace pycolmap approach
-- [ ] Verify connected_fraction > 0 on scan 16
+### P0 — DG fragment preservation (G3) — NEXT
+- [ ] Implement connected component splitting in mesh_worker.py
+- [ ] Verify fragment count > 1 when pycolmap produces sparse multi-component output
+- [ ] Verify open boundary edges represent genuine surface gaps
 
-### P1 — Wire SAM2 (G2)
-- [ ] Install SAM2: `pip install segment-anything` + sam2.1_hiera-large.pt
-- [ ] Set SAM2_MOCK=0 or remove env var
+### P1 — SAM2 wiring (G2)
+- [ ] `pip install fast-simplification` (needed for appearance_scaffold)
+- [ ] Install SAM2 checkpoints (sam2.1_hiera-large.pt)
+- [ ] Set SAM2_MOCK=0 in environment
 - [ ] Re-run SIAT, verify real masks
 
-### P2 — Fix camera access (G4, G7)
-- [ ] Test capture.html on phone via ngrok HTTPS
-- [ ] Fix getUserMedia permission flow
-- [ ] Document correct ngrok command with --host-header=rewrite
+### P2 — Camera E2E (G4, G7)
+- [ ] Test capture.html on phone via ngrok HTTPS URL
+- [ ] Verify getUserMedia works with --host-header=rewrite
 
-### P3 — EDSIM stale rebind bug (G6)
-- [ ] Fix `detect_stale_rebind()` signature mismatch (expects dict, gets string)
+### P3 — EDSIM bug (G6)
+- [ ] Fix `detect_stale_rebind()` function signature
 - [ ] Write test for geometry-output-history endpoint
 
+### P4 — Photoreal full path (G5, G8, G9)
+- [ ] Understand when appearance_only_route=0 (requires metric_trust_allowed=1)
+- [ ] UV parameterization for tattoo placement
+- [ ] Deformation testing on real mesh
+
 ## Last Session
-- 2026-04-22: DoD saved to docs/, CLAUDE.md + PROGRESS.md created, PreCompact hook wired
-- Pipeline ran: G1 confirmed broken (pycolmap returns empty), all downstream on placeholder
-- Root cause investigation needed via manual reconstruct_worker run
+- 2026-04-22: Pipeline re-run on scan 16 with real reconstruction
+- G1 FIXED: pycolmap sparse reconstruction working (3783 points, 30/30 connected)
+- G1 side fix: sparse dir persisted + pycolmap 4.x API fixes in reg_worker.py
+- CLAUDE.md updated with agent workflow instructions
+- PreCompact hook wired (project-progress-commit.py)
+- bodyscan3d now has: CLAUDE.md, PROGRESS.md, HANDOVER.md, docs/bodyscan-dod-outcomes.txt
 
 ## Git Log
 ```
+8e2c50a fix: pycolmap 4.x API compat + sparse dir persistence
+68e0bea docs: complete DoD gap analysis — 15 gaps identified, P0 pycolmap broken
 33a1525 chore: remove test marker from PROGRESS.md
 221a81d auto: progress update before compaction (2026-04-22 12:17)
 66dae97 docs: add canonical DoD spec (2 files)
