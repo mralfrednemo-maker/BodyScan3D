@@ -18,6 +18,7 @@ import os
 import shutil
 import tempfile
 import traceback
+import json
 import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -277,6 +278,18 @@ def run(scan_id):
         )
         shutil.rmtree(workdir, ignore_errors=True)
         sys.exit(1)
+
+    # Persist sparse reconstruction directory for REG worker
+    # REG needs pycolmap Reconstruction() object to compute connected_fraction
+    sparse_persistent_dir = os.path.join(MODELS_DIR, str(scan_id), 'sparse')
+    if os.path.exists(recon_dir):
+        if os.path.exists(sparse_persistent_dir):
+            shutil.rmtree(sparse_persistent_dir)
+        shutil.copytree(recon_dir, sparse_persistent_dir)
+        sidecar_path = os.path.join(MODELS_DIR, str(scan_id), 'recon_meta.json')
+        with open(sidecar_path, 'w') as f:
+            json.dump({'recon_dir': sparse_persistent_dir}, f)
+        log(f'  Sparse dir persisted: {sparse_persistent_dir}')
 
     glb_url = f'/uploads/models/{scan_id}/raw_pointcloud.glb'
     requests.post(

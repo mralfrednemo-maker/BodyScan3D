@@ -154,11 +154,11 @@ def estimate_scale_regime(recon_dir, frames):
     # Estimate scale confidence: coefficient of variation of point depths
     depths = []
     for img_id, img in recon.images.items():
-        cam = recon.cameras[img.camera_id]
-        for point_id in img.point3D_ids:
+        for pt2D in img.get_observation_points2D():
+            point_id = pt2D.point3D_id
             if point_id == -1:
                 continue
-            pt = recon.points3D.get(point_id)
+            pt = recon.points3D[point_id] if point_id in recon.points3D else None
             if pt is None:
                 continue
             # Approximate depth

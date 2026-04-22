@@ -12,8 +12,11 @@
 3. Check `git log --oneline -5` — where did the last session end?
 
 ### Step 2: Gap analysis (MANDATORY before any new work)
-Run `python workers/dod_verify.py --self-test` or equivalent spec-vs-code check.
-Update `PROGRESS.md` with findings before writing any code.
+1. Read `docs/bodyscan-dod-outcomes.txt` — the DoD spec
+2. Use the **solutions-architect** agent for gap analysis (Agent tool, subagent_type: solutions-architect). Give it the DoD path and ask for a structured gap list prioritized by severity.
+3. Use the **superpowers:code-reviewer** agent after any code change (superpowers:requesting-code-review skill).
+4. Use **codex:rescue** for deep root-cause investigation of failures (Agent tool, subagent_type: codex:codex-rescue).
+5. Update `PROGRESS.md` with findings before writing any code.
 
 ### Step 3: Work tracking
 After each significant action, update `PROGRESS.md`.
