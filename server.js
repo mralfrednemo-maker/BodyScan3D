@@ -238,6 +238,8 @@ db.exec(`
     severe_geometry_concern INTEGER NOT NULL DEFAULT 0,
     structural_proxy_path TEXT,
     appearance_scaffold_path TEXT,
+    model_uv_url TEXT,
+    model_deform_url TEXT,
     created_at      TEXT DEFAULT (datetime('now'))
   );
 
@@ -434,6 +436,7 @@ const STATUS_TO_LEGACY = {
   'RECONSTRUCTING':  'processing',
   'POST_PROCESSING': 'processing',
   'COMPLETED':       'ready',
+  'PUBLISHED':       'ready',  // 8-stage pipeline end state — also 'ready' for SPA viewer
   'FAILED':          'failed',
   // pass-through for legacy capitalized values already stored in DB
   'Processing': 'processing',
@@ -1898,7 +1901,7 @@ app.get('/api/internal/scans/:id/status', requireInternal, (req, res) => {
 // List scans that need a worker to run (used by pipeline.py --poll)
 app.get('/api/internal/scans/pending', requireInternal, (req, res) => {
   const pending = q.all(
-    "SELECT id,status FROM scans WHERE status IN ('VIDEO_UPLOADED','FRAME_QA','MASKING','RECONSTRUCTING','POST_PROCESSING') ORDER BY created_at ASC LIMIT 20"
+    "SELECT id,status FROM scans WHERE status IN ('VIDEO_UPLOADED','FRAME_QA','FSCQI','SIAT','RECONSTRUCTING','REG','POST_PROCESSING','PHOTOREAL','EDSIM','OQSP') ORDER BY created_at ASC LIMIT 20"
   );
   res.json(pending.map(s => ({ id: s.id, pipelineStatus: s.status })));
 });
