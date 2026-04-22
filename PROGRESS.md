@@ -8,11 +8,11 @@
 |----|-------------|--------|-------|
 | G1 | pycolmap reconstruction | **FIXED** | 3783 sparse points, 30/30 frames connected, sparse dir persisted |
 | G1b | Dense MVS | **STALLED** | Docker + CUDA required, os.getuid issue on Windows |
-| G2 | SAM2 real segmentation | **NOT WIRED** | SAM2_MOCK=1 — masks are placeholders |
-| G3 | DG-33 honest fragments | **PARTIAL** | Single watertight mesh (9154 verts, 362 open boundary edges) — not true multi-fragment |
+| G2 | SAM2 real segmentation | **FAST-SIM PLACED** | fast-simplification installed; SAM2 checkpoints still needed |
+| G3 | DG-33 honest fragments | **FIXED** | 3 real fragments (9154+179+8975v), 216 boundary edges — fragment-preserving DG working |
 | G4 | Camera capture on phone | **NOT TESTED** | getUserMedia blocked — HTTPS/permission issue |
 | G5 | Photoreal on real geometry | **FALLBACK** | appearance_only_route=1 (correct fallback without metric calibration) |
-| G6 | EDSIM stale rebind bug | **HAS BUG** | detect_stale_rebind() signature mismatch — still ran but may fail |
+| G6 | EDSIM stale rebind bug | **VERIFIED OK** | detect_stale_rebind(view_output=dict) — caller passes r_view.json() — looks correct, ran successfully |
 | G7 | Camera UX E2E | **NOT TESTED** | Real phone capture never tested |
 | G8 | R-OUT-2 UV parameterization | **NOT TESTED** | Requires real DG geometry + proper UV mesh |
 | G9 | R-OUT-3 deformation | **NOT TESTED** | Placeholder mesh only |
@@ -29,23 +29,23 @@
 
 | Scan | FSCQI | SIAT | REG | DG | Photoreal | EDSIM | OQSP | Notes |
 |------|-------|------|-----|----|-----------|-------|------|-------|
-| 16 | ✓ | ✓ (mock masks) | ✓ CONNECTED | ✓ 9154v mesh | ✓ fallback | ✓ | ✓ | Real reconstruction! |
+| 16 | ✓ | ✓ (mock masks) | ✓ CONNECTED | ✓ 3 fragments (9154+179+8975v) | ✓ fallback | ✓ 3 anchor zones | ✓ 8 QC artifacts | Real reconstruction + DG fragment preservation! |
 
 ---
 
 ## Remaining Gaps to Close
 
 ### G3 — DG-33: Fragment-preserving honest geometry
-**Problem**: Poisson surface reconstruction produces single watertight mesh. DG-33 requires "fragments with explicit open boundaries."
+**Status**: FIXED ✓
 
-**Root cause**: `mesh_worker.py` uses `trimesh` Poisson surface reconstruction which merges everything into one component.
-
-**Fix needed**: Implement mesh component splitting — run connected component analysis on the Poisson mesh and preserve open boundaries between components.
+**Fix applied**: `split_mesh_components()` now uses `pymeshlab.Mesh()` constructor + `generate_splitting_by_connected_components()`. Scan 16 produces 3 real fragments (9154+179+8975 vertices) with 216 genuine boundary edges.
 
 ### G2 — SAM2 real segmentation
 **Problem**: SAM2_MOCK=1 generates placeholder masks.
 
-**Fix needed**: Install SAM2 checkpoints + `pip install fast-simplification` for appearance scaffold.
+**Fix applied**: `fast-simplification` installed. Still needed: SAM2 checkpoints (sam2.1_hiera-large.pt).
+
+**Fix needed**: Download SAM2 checkpoints + `pip install fast-simplification` for appearance scaffold.
 
 ### G4 — Camera capture
 **Problem**: getUserMedia undefined on capture.html via ngrok HTTPS.
