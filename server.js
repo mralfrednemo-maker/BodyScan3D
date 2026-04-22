@@ -356,6 +356,10 @@ db.exec(`
   "ALTER TABLE fscqi_bundles ADD COLUMN raw_reference_map_json TEXT",
   // SI-1: rename rigid_core_path → static_rigid_core_path (DoD spec compliance)
   "ALTER TABLE siat_outputs ADD COLUMN static_rigid_core_path TEXT",
+  // R-OUT-2: UV-mapped mesh for surface-anchored tattoo placement
+  "ALTER TABLE geometry_outputs ADD COLUMN model_uv_url TEXT",
+  // R-OUT-2: UV mesh URL in publish manifest
+  "ALTER TABLE publish_manifests ADD COLUMN model_uv_url TEXT",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // ---------------------------------------------------------------------------
@@ -1549,7 +1553,8 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
   const {
     output_version, fragment_set_json, hole_boundary_json,
     usefulness_zones_json, severe_geometry_concern,
-    structural_proxy_path, appearance_scaffold_path
+    structural_proxy_path, appearance_scaffold_path,
+    model_uv_url
   } = req.body;
 
   if (!fragment_set_json || !hole_boundary_json || !usefulness_zones_json)
@@ -1559,8 +1564,8 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
     INSERT INTO geometry_outputs
       (scan_id, output_version, fragment_set_json, hole_boundary_json,
        usefulness_zones_json, severe_geometry_concern,
-       structural_proxy_path, appearance_scaffold_path)
-    VALUES (?,?,?,?,?,?,?,?)`);
+       structural_proxy_path, appearance_scaffold_path, model_uv_url)
+    VALUES (?,?,?,?,?,?,?,?,?)`);
 
   const result = insert.run(
     scanId,
@@ -1570,7 +1575,8 @@ app.post('/api/internal/scans/:id/geometry-output', requireInternal, (req, res) 
     usefulness_zones_json,
     severe_geometry_concern != null ? (severe_geometry_concern ? 1 : 0) : 0,
     structural_proxy_path || null,
-    appearance_scaffold_path || null
+    appearance_scaffold_path || null,
+    model_uv_url || null
   );
 
   // Record lineage: parent = REG output
@@ -1773,7 +1779,8 @@ app.post('/api/internal/scans/:id/publish-manifest', requireInternal, (req, res)
     lineage_artifact_refs_json,
     capability_readiness_json,
     severe_concern_aggregation_json,
-    integrity_conflict_surfaces_json
+    integrity_conflict_surfaces_json,
+    model_uv_url
   } = req.body;
 
   if (!qc_artifacts_json || !publishability_class || !lineage_artifact_refs_json ||
@@ -1784,8 +1791,8 @@ app.post('/api/internal/scans/:id/publish-manifest', requireInternal, (req, res)
     INSERT INTO publish_manifests
       (scan_id, manifest_version, qc_artifacts_json, publishability_class,
        lineage_artifact_refs_json, capability_readiness_json,
-       severe_concern_aggregation_json, integrity_conflict_surfaces_json)
-    VALUES (?,?,?,?,?,?,?,?)`);
+       severe_concern_aggregation_json, integrity_conflict_surfaces_json, model_uv_url)
+    VALUES (?,?,?,?,?,?,?,?,?)`);
 
   const result = insert.run(
     scanId,
@@ -1795,7 +1802,8 @@ app.post('/api/internal/scans/:id/publish-manifest', requireInternal, (req, res)
     lineage_artifact_refs_json,
     capability_readiness_json,
     severe_concern_aggregation_json,
-    integrity_conflict_surfaces_json || '{}'
+    integrity_conflict_surfaces_json || '{}',
+    model_uv_url || null
   );
 
   // Record lineage: parent = edit_sim_output (final artifact in pipeline)

@@ -198,6 +198,9 @@ def run(scan_id):
     geo_output    = fetch_output(scan_id, 'geometry-output')
     edsim_output  = fetch_output(scan_id, 'edsim-output')
 
+    # R-OUT-2: UV-mapped mesh URL for surface-anchored placement (tattoo warp)
+    model_uv_url  = geo_output.get('model_uv_url') if geo_output else None
+
     if not edsim_output:
         log('FATAL: EDSIM output not found — cannot proceed to OQSP')
         requests.post(
@@ -273,6 +276,7 @@ def run(scan_id):
         'capability_readiness_json': json.dumps(capability_readiness),
         'severe_concern_aggregation_json': json.dumps(severe_concern_agg),
         'integrity_conflict_surfaces_json': json.dumps(integrity_conflicts),
+        'model_uv_url': model_uv_url,
     }
 
     r = requests.post(

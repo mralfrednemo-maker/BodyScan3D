@@ -297,6 +297,36 @@ def run(scan_id):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+    # ── R-OUT-2: UV parameterization for surface-anchored placement ──
+    # Computed after model.glb is saved; exports UV-mapped mesh for tattoo warp
+    uv_model_url = None
+    try:
+        import pymeshlab as _pml
+        uv_ms = _pml.MeshSet()
+        # Reload the cleaned mesh from the saved GLB for UV computation
+        uv_ms.load_new_mesh(final_glb)
+        log(f'  UV mapping: {uv_ms.current_mesh().vertex_number()} vertices, {uv_ms.current_mesh().face_number()} faces')
+
+        # Use trivial per-wedge UV parametrization — works on any watertight or patch mesh
+        # and is the most robust option when no registered raster cameras are available.
+        uv_ms.compute_texcoord_parametrization_triangle_trivial_per_wedge()
+
+        uv_glb_path = os.path.join(scan_models_dir, 'model_uv.glb')
+        uv_ply_tmp = uv_glb_path.replace('.glb', '_tmp.ply')
+        uv_ms.save_current_mesh(uv_ply_tmp)
+
+        # Export UV mesh via trimesh (preserves per-wedge UV coordinates in GLB)
+        uv_mesh = trimesh.load(uv_ply_tmp)
+        uv_mesh.export(uv_glb_path)
+        os.remove(uv_ply_tmp)
+
+        uv_model_url = f'/uploads/models/{scan_id}/model_uv.glb'
+        log(f'  UV mesh saved: {uv_glb_path}')
+
+    except Exception as _e:
+        log(f'  UV parameterization failed (non-fatal): {_e}')
+        uv_model_url = None
+
     # Post final model URL to server
     requests.post(
         f'{API_BASE}/api/internal/scans/{scan_id}/final-model',
@@ -318,6 +348,7 @@ def run(scan_id):
                 'severe_geometry_concern': dg_artifacts['severe_geometry_concern'],
                 'structural_proxy_path': structural_proxy_url,
                 'appearance_scaffold_path': appearance_scaffold_url,
+                'model_uv_url': uv_model_url,
             },
             timeout=30
         )
