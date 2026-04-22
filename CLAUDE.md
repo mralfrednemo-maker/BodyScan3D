@@ -11,13 +11,22 @@
 2. Read `docs/bodyscan-dod-outcomes.txt` — the DoD
 3. Check `git log --oneline -5` — where did the last session end?
 
-### Step 2: Gap analysis (MANDATORY before any new work)
+### Step 2: Gap analysis — repeat until ZERO findings
+**GAP ANALYSIS LOOP (do this before ANY code review):**
 1. Read `docs/bodyscan-dod-outcomes.txt` — the DoD spec
-2. Use the **solutions-architect** agent for gap analysis (Agent tool, subagent_type: solutions-architect). Give it the DoD path and ask for a structured gap list prioritized by severity.
-3. **Run solutions-architect TWICE** with different angles: first pass on requirements coverage, second pass on implementation correctness (API usage, edge cases, error handling).
-4. Use the **superpowers:code-reviewer** agent after any code change (superpowers:requesting-code-review skill).
-5. Use **codex:rescue** for deep root-cause investigation of failures (Agent tool, subagent_type: codex:codex-rescue).
-6. Update `PROGRESS.md` with findings before writing any code.
+2. Use the **solutions-architect** agent (subagent_type: solutions-architect). Give it the DoD path. Ask for structured gap list prioritized by severity.
+3. **Run solutions-architect TWICE** with different angles: pass 1 on requirements coverage, pass 2 on implementation correctness (API usage, types, error handling).
+4. Fix the highest-severity gap.
+5. Repeat from step 2.
+6. **STOP gap analysis loop only when solutions-architect returns ZERO new gaps.**
+7. Only then proceed to Step 3 (code review).
+
+**CODE REVIEW LOOP (only after gap analysis is clean):**
+1. Use the **superpowers:code-reviewer** agent after any code change (superpowers:requesting-code-review skill).
+2. Use **codex:rescue** for deep root-cause investigation of failures (Agent tool, subagent_type: codex:codex-rescue).
+3. Fix findings.
+4. Repeat code review until zero findings.
+5. Only then move on.
 
 ### Step 3: Work tracking
 After each significant action, update `PROGRESS.md`.
